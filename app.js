@@ -49,6 +49,7 @@ const IC = {
   swap: P("M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z"),
   edit: P("M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"),
   minus: P("M19 13H5v-2h14v2z"),
+  folder: P("M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"),
   headset: P("M12 1a9 9 0 00-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 00-9-9z")
 };
 const ic = (n, c) => '<svg class="ic ' + (c || "") + '" viewBox="0 0 24 24" aria-hidden="true">' + (IC[n] || "") + "</svg>";
@@ -77,13 +78,15 @@ const dbDel = (s, k) => req(s, "readwrite", o => o.delete(k));
 const items = new Map();
 let pls = [];
 let tab = store.get("tab", "songs");
-const TABS = ["songs", "artists", "albums", "playlists"];
+const TABS = ["songs", "folders", "artists", "albums", "playlists"];
 let chip = store.get("chip", "all");
-const TABIC = { songs: "note", videos: "video", artists: "person", albums: "album", playlists: "playlist" };
+const TABIC = { songs: "note", folders: "folder", videos: "video", artists: "person", albums: "album", playlists: "playlist" };
 if (!TABS.includes(tab)) tab = "songs";
 const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-const vis = kind => [...items.values()].filter(i => !i.hidden && (!kind || i.kind === kind)).sort(byTitle);
-const isVis = id => { const i = items.get(id); return !!i && !i.hidden; };
+let offFolders = new Set(store.get("off", []));
+const showable = i => !i.hidden && !(i.folder != null && offFolders.has(i.folder));
+const vis = kind => [...items.values()].filter(i => showable(i) && (!kind || i.kind === kind)).sort(byTitle);
+const isVis = id => { const i = items.get(id); return !!i && showable(i); };
 
 /* ================= toast / busy ================= */
 let tt;
@@ -204,8 +207,17 @@ function renderTab() {
   if (tab === "songs") {
     const ids = vis(chip === "a" || chip === "v" ? chip : null).map(i => i.id); tabIds = ids;
     const chips = '<div class="chips" style="padding:2px 6px 8px">' + [["all", "chip_all"], ["a", "chip_songs"], ["v", "tab_videos"]].map(([k, l]) => '<button class="chip tap' + (chip === k ? " on" : "") + '" data-chip="' + k + '">' + esc(L(l)) + "</button>").join("") + "</div>";
-    if (!ids.length) h = chips + emptyHTML(chip === "v" ? "video" : "note", L(chip === "v" ? "empty_videos" : "empty_songs"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
-    else h = chips + trackBar(ids.length, chip === "v" ? "videos_n" : chip === "a" ? "songs_n" : "items_n") + listHTML(ids);
+    const ban = NS() && !scanGranted ? srowH("scan", "search", L("scan_title"), "") : "";
+    if (!ids.length) h = ban + chips + emptyHTML(chip === "v" ? "video" : "note", L(chip === "v" ? "empty_videos" : "empty_songs"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
+    else h = ban + chips + trackBar(ids.length, chip === "v" ? "videos_n" : chip === "a" ? "songs_n" : "items_n") + listHTML(ids);
+  } else if (tab === "folders") {
+    const g = new Map(); let imp = 0;
+    for (const it of items.values()) { if (it.hidden) continue; if (it.folder == null) { imp++; continue; } g.set(it.folder, (g.get(it.folder) || 0) + 1); }
+    const rows = [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }));
+    h = rows.length ? '<div class="note">' + esc(L("folders_hint")) + "</div>" : "";
+    h += rows.map(([f, n]) => { const nm = f.split("/").filter(Boolean).slice(-2).join(" / ") || "/"; return '<div class="row tap" data-act="folder" data-v="' + encodeURIComponent(f) + '"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(nm) + '</div><div class="s">' + esc(f || "/") + " · " + esc(L("items_n", { n })) + '</div></div><span class="sw' + (offFolders.has(f) ? "" : " on") + '" data-act="foff" data-v="' + encodeURIComponent(f) + '"></span></div>'; }).join("");
+    if (imp) h += '<div class="row tap" data-act="folder" data-v="__imp"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(L("folder_imported")) + '</div><div class="s">' + esc(L("items_n", { n: imp })) + "</div></div></div>";
+    if (!rows.length && !imp) h = emptyHTML("folder", L("folders_empty"), L("scan_hint"), NS() ? '<div style="margin-top:18px"><button class="chip g tap" data-act="scan">' + ic("search", "s") + esc(L("scan_now")) + "</button></div>" : "");
   } else if (tab === "artists") {
     const g = groupBy("artist");
     h = g.length ? '<div class="list">' + g.map(([k, ids]) => '<div class="row tap" data-act="artist" data-v="' + encodeURIComponent(k) + '"><div class="cov round">' + ic("person") + '</div><div class="meta"><div class="t">' + esc(k || L("unknown")) + '</div><div class="s">' + esc(L("songs_n", { n: ids.length })) + "</div></div></div>").join("") + "</div>"
@@ -230,7 +242,7 @@ function drawNav() {
 function songsPage(titleFn, getIds, o) {
   o = o || {};
   const p = openPage(p => {
-    const ids = getIds().filter(isVis); p.ids = ids;
+    const ids = getIds().filter(o.raw ? (id => { const i = items.get(id); return !!i && !i.hidden; }) : isVis); p.ids = ids;
     let actions = "";
     if (ids.length) actions += '<button class="ib tap" data-act="pshuf">' + ic("shuffle") + '</button><button class="ib tap" data-act="pplay">' + ic("play") + "</button>";
     if (o.pl) actions += '<button class="ib tap" data-act="pedit" style="' + (p.edit ? "color:var(--g)" : "") + '">' + ic("swap") + '</button><button class="ib tap" data-act="pmore">' + ic("more") + "</button>";
@@ -259,7 +271,7 @@ function openSearch() {
 function openSettings() {
   openPage(() => ({
     title: L("settings"),
-    html: srowH("lang", "globe", L("set_lang"), lang === "hi" ? "हिन्दी" : "English") + srowH("eq", "eq", L("set_eq"), eq.on ? "ON" : "") +
+    html: srowH("lang", "globe", L("set_lang"), lang === "hi" ? "हिन्दी" : "English") + (NS() ? srowH("scan", "search", L("scan_now")) : "") + srowH("eq", "eq", L("set_eq"), eq.on ? "ON" : "") +
       srowH("hidden", "hide", L("set_hidden"), String([...items.values()].filter(i => i.hidden).length)) + srowH("backup", "backup", L("set_backup")) + srowH("about", "info", L("set_about"))
   }));
 }
@@ -318,6 +330,7 @@ async function hideItem(id) {
 }
 async function unhideItem(id) { const it = items.get(id); if (!it) return; it.hidden = 0; await dbPut("items", it); refreshAll(); }
 async function deleteItem(id) {
+  { const x = items.get(id); if (x && x.path) { await hideItem(id); return; } }
   if (curId === id) stopPlayback();
   await dbDel("items", id); items.delete(id);
   for (const p of pls) { const n = p.ids.length; p.ids = p.ids.filter(x => x !== id); if (p.ids.length !== n) await dbPut("pl", p); }
@@ -356,7 +369,7 @@ function sleepSheet() {
 function deleteSheet(id) {
   const it = items.get(id);
   openSheet(L("del_title"), b => {
-    b.appendChild(mk("div", "msg", esc(it.title) + "<br><br>" + esc(L("del_msg"))));
+    b.appendChild(mk("div", "msg", esc(it.title) + "<br><br>" + esc(L(it.path ? "del_msg_scan" : "del_msg"))));
     const a = mk("div", "sh-actions");
     const c = mk("button", "chip tap", esc(L("cancel"))); c.onclick = closeSheet;
     const o = mk("button", "chip g tap", esc(L("del_ok"))); o.onclick = () => { closeSheet(); deleteItem(id); };
@@ -598,7 +611,9 @@ function parseLyrics(t) {
 function loadLyrics() {
   const it = curItem(); lyr.data = it ? parseLyrics(it.lyrics) : null; lyr.idx = -1; lyr.state = "";
   renderLyrics();
-  if (lyr.on && it && !lyr.data && !lyr.tried[it.id]) findOnline(it);
+  if (!it) return;
+  if (!it.lyrics && !it.blob && !it.lyrDone && NS()) { localLyrics(it).then(() => { if (curId !== it.id) return; lyr.data = parseLyrics(it.lyrics); renderLyrics(); if (lyr.on && !lyr.data && !lyr.tried[it.id]) findOnline(it); }); return; }
+  if (lyr.on && !lyr.data && !lyr.tried[it.id]) findOnline(it);
 }
 function openLyrics() {
   if (!curItem()) return;
@@ -661,7 +676,7 @@ const curItem = () => (curId != null ? items.get(curId) : null);
 const activeEl = () => { const it = curItem(); return it && it.kind === "v" && mode === "video" ? vid : aud; };
 const shuffled = (ids, first) => { const a = ids.filter(x => x !== first); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return first != null ? [first].concat(a) : a; };
 function playQueue(ids, i, forceShuffle) {
-  ids = ids.filter(isVis); if (!ids.length) return;
+  ids = ids.filter(id => { const i = items.get(id); return !!i && !i.hidden; }); if (!ids.length) return;
   orig = ids.slice(); let start = ids[Math.min(i, ids.length - 1)];
   if (forceShuffle) { shuf = true; store.set("shuf", true); start = ids[Math.floor(Math.random() * ids.length)]; }
   if (shuf) { queue = shuffled(ids, start); qi = 0; } else { queue = ids.slice(); qi = queue.indexOf(start); }
@@ -669,7 +684,7 @@ function playQueue(ids, i, forceShuffle) {
 }
 function load(auto) {
   const it = items.get(queue[qi]); if (!it) return;
-  curId = it.id; if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(it.blob);
+  curId = it.id; if (url) URL.revokeObjectURL(url); url = it.blob ? URL.createObjectURL(it.blob) : SargamNative.fileSrc(it.path);
   mode = "audio";
   const el = activeEl(), other = el === aud ? vid : aud;
   other.pause(); other.removeAttribute("src"); try { other.load(); } catch (e) {}
@@ -784,7 +799,7 @@ async function upgradeItem(it) {
 }
 async function upgradeAll() {
   let n = 0;
-  for (const it of [...items.values()]) { if (!(it.tagsDone && it.art !== undefined)) { await upgradeItem(it); n++; await new Promise(r => setTimeout(r, 40)); } }
+  for (const it of [...items.values()]) { if (!it.blob) continue; if (!(it.tagsDone && it.art !== undefined)) { await upgradeItem(it); n++; await new Promise(r => setTimeout(r, 40)); } }
   if (n) { refreshAll(); if (curItem()) uiTrack(); }
 }
 function uiTrack() {
@@ -799,6 +814,7 @@ function uiTrack() {
   const big = artUrl || it.thumb;
   $("fCover").innerHTML = big ? '<img alt="" src="' + big + '">' : ic(it.kind === "v" ? "video" : "note");
   $("fbg").style.backgroundImage = it.thumb ? "url(" + it.thumb + ")" : "none";
+  if (!it.blob && it.art === undefined) scanArt(it).then(() => { if (curId === it.id && it.art) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = URL.createObjectURL(it.art); $("fCover").innerHTML = '<img alt="" src="' + artUrl + '">'; $("fbg").style.backgroundImage = 'url("' + artUrl + '")'; } });
   $("fArt").classList.toggle("m-video", it.kind === "v" && mode === "video");
   const vb = $("fVid"); vb.classList.toggle("hide", it.kind !== "v"); vb.classList.toggle("on", mode === "video"); vb.innerHTML = ic(mode === "video" ? "headset" : "video");
   $("tDur").textContent = fmt(it.dur); uiHeart(); uiState(); uiShuf(); uiSleep(); uiTime(true);
@@ -835,6 +851,118 @@ function setStatic() {
 }
 function refreshAll() { renderTab(); pages.forEach(p => p.refresh()); }
 
+/* ================= phone scan (native, Android MediaStore) ================= */
+const NS = () => (window.SargamNative && SargamNative.isNative && SargamNative.scan ? SargamNative : null);
+let scanning = false, lastScan = 0, scanGranted = false;
+function dataToBlob(u) { const h = u.split(","); const mime = h[0].match(/:(.*?);/)[1]; const bin = atob(h[1]); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: mime }); }
+function dbBulk(adds, puts, dels) {
+  return new Promise((res, rej) => {
+    const t = db.transaction("items", "readwrite"); const st = t.objectStore("items");
+    adds.forEach(o => { const r = st.put(o); r.onsuccess = () => { o.id = r.result; }; });
+    puts.forEach(o => st.put(o)); dels.forEach(id => st.delete(id));
+    t.oncomplete = () => res(); t.onerror = t.onabort = () => rej(t.error);
+  });
+}
+function scanItem(s, key) {
+  const np = nameParts(s.name || ""), base = baseOf(s.name || "");
+  let title = s.title, artist = s.artist || "";
+  if (!title || baseOf(title) === base || /^\d+$/.test(title)) { title = np.title || base; if (!artist) artist = np.artist; }
+  return { kind: s.kind === "v" ? "v" : "a", title, artist, album: s.album || "", dur: s.dur || 0, path: s.path, mid: s.id, folder: s.folder || "", size: s.size || 0, name: s.name || "", lyrics: "", base, key, hidden: 0, fav: 0, added: Date.now(), tagsDone: 1 };
+}
+async function mergeScan(list) {
+  const byPath = new Map(), haveKeys = new Set();
+  for (const it of items.values()) { if (it.path) byPath.set(it.path, it); else haveKeys.add(it.key); }
+  const adds = [], puts = [], seen = new Set(), kinds = new Set(list.map(x => x.kind === "v" ? "v" : "a"));
+  for (const s of list) {
+    if (!s.path) continue; seen.add(s.path);
+    const ex = byPath.get(s.path);
+    if (ex) {
+      let ch = false;
+      if (ex.mid !== s.id) { ex.mid = s.id; ch = true; }
+      if (ex.folder !== (s.folder || "")) { ex.folder = s.folder || ""; ch = true; }
+      if (ex.size !== s.size) { ex.size = s.size; ex.dur = s.dur; delete ex.art; delete ex.thumb; ch = true; }
+      if (ch) puts.push(ex); continue;
+    }
+    const key = (s.name || "").toLowerCase() + "|" + s.size;
+    if (haveKeys.has(key)) continue;
+    adds.push(scanItem(s, key));
+  }
+  const dels = list.length ? [...byPath.values()].filter(it => kinds.has(it.kind) && !seen.has(it.path)).map(it => it.id) : [];
+  if (!adds.length && !puts.length && !dels.length) return { added: 0 };
+  await dbBulk(adds, puts, dels);
+  adds.forEach(o => items.set(o.id, o));
+  dels.forEach(id => { if (curId === id) stopPlayback(); items.delete(id); });
+  for (const p of pls) { const n = p.ids.length; p.ids = p.ids.filter(x => items.has(x)); if (p.ids.length !== n) await dbPut("pl", p); }
+  await resolveGhosts();
+  return { added: adds.length, removed: dels.length };
+}
+async function nativeScan(manual) {
+  const N = NS(); if (!N || scanning) return; scanning = true;
+  try {
+    let acc = await N.scan.has();
+    if (!acc.granted && manual) acc = await N.scan.ask();
+    scanGranted = !!acc.granted;
+    if (!scanGranted) { if (manual) toast(L("scan_denied")); scanning = false; renderTab(); return; }
+    if (manual) busy(true, L("scan_busy"), 40);
+    const r = await N.scan.run();
+    const n = await mergeScan((r && r.items) || []);
+    lastScan = Date.now(); if (manual) busy(false);
+    if (n.added || manual) toast(L("scan_done", { n: n.added }));
+    refreshAll();
+  } catch (e) { busy(false); if (manual) toast(L("scan_fail")); }
+  scanning = false;
+}
+const thumbQ = []; let thumbRun = 0, io = null;
+async function pumpThumbs() {
+  while (thumbRun < 2 && thumbQ.length) {
+    thumbRun++; const it = thumbQ.shift();
+    (async () => {
+      try { const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 220 }); it.thumb = r && r.data ? r.data : null; } catch (e) { it.thumb = null; }
+      delete it.thumbBusy; dbPut("items", it).catch(() => {});
+      document.querySelectorAll('.row[data-id="' + it.id + '"] .cov').forEach(c => { c.innerHTML = covInner(it) + (it.kind === "v" ? '<i class="vtag">' + ic("video") + "</i>" : ""); });
+      thumbRun--; pumpThumbs();
+    })();
+  }
+}
+function observeThumbs() {
+  if (!NS() || !("IntersectionObserver" in window)) return;
+  if (!io) io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return; io.unobserve(e.target);
+    const it = items.get(+e.target.dataset.id);
+    if (it && !it.blob && it.thumb === undefined && !it.thumbBusy) { it.thumbBusy = 1; thumbQ.push(it); pumpThumbs(); }
+  }), { rootMargin: "300px" });
+  document.querySelectorAll(".row[data-id]:not([data-ob])").forEach(r => { r.dataset.ob = "1"; const it = items.get(+r.dataset.id); if (it && !it.blob && it.thumb === undefined) io.observe(r); });
+}
+const artBusy = new Set();
+async function scanArt(it) {
+  if (it.blob || it.art !== undefined || artBusy.has(it.id) || !NS()) return; artBusy.add(it.id);
+  try {
+    const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 900 });
+    if (r && r.data) { it.art = dataToBlob(r.data); if (!it.thumb) it.thumb = await shrink(it.art, 240); } else it.art = null;
+    await dbPut("items", it);
+  } catch (e) {}
+  artBusy.delete(it.id);
+}
+async function tagHead(src) {
+  const r = await fetch(src, { headers: { Range: "bytes=0-9" } });
+  if (r.status !== 206) { try { if (r.body) r.body.cancel(); } catch (e) {} return null; }
+  const b = new Uint8Array(await r.arrayBuffer()); if (b[0] !== 0x49 || b[1] !== 0x44 || b[2] !== 0x33) return null;
+  const n = Math.min(ss(b, 6) + 10, 12 * 1024 * 1024); const r2 = await fetch(src, { headers: { Range: "bytes=0-" + (n - 1) } });
+  if (r2.status !== 206) return null; return await r2.blob();
+}
+async function localLyrics(it) {
+  it.lyrDone = 1; const src = NS().fileSrc(it.path); let t = "";
+  try { const r = await fetch(src.replace(/\.[^./]+$/, ".lrc")); if (r.ok && !/html/i.test(r.headers.get("content-type") || "")) t = await r.text(); } catch (e) {}
+  if (!t && /\.mp3$/i.test(it.path)) { try { const b = await tagHead(src); if (b) t = (await readID3(b)).lyrics || ""; } catch (e) {} }
+  if (t) it.lyrics = t;
+  try { await dbPut("items", it); } catch (e) {}
+}
+async function startScan() {
+  const N = NS(); if (!N) return;
+  try { const a = await N.scan.has(); scanGranted = !!a.granted; if (scanGranted) nativeScan(false); else renderTab(); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && NS() && scanGranted && Date.now() - lastScan > 30000) nativeScan(false); });
+
 /* ================= backup ================= */
 const gh = () => store.get("gh", []), gf = () => store.get("gf", []);
 function makeBackup() {
@@ -842,13 +970,14 @@ function makeBackup() {
   return {
     app: "sargam", v: 1, when: new Date().toISOString(),
     favs: all.filter(i => i.fav).map(i => i.key).concat(gf()),
-    hidden: all.filter(i => i.hidden).map(i => i.key).concat(gh()),
+    hidden: all.filter(i => i.hidden).map(i => i.key).concat(gh()), offFolders: [...offFolders],
     playlists: pls.map(p => ({ name: p.name, keys: p.ids.map(keyOf).filter(Boolean).concat(p.ghosts || []) }))
   };
 }
 async function applyBackup(j) {
   if (!j || j.app !== "sargam") { toast(L("bk_bad")); return; }
   const byKey = new Map([...items.values()].map(i => [i.key, i])); let ok = 0, wait = 0;
+  for (const f of j.offFolders || []) offFolders.add(f); store.set("off", [...offFolders]);
   const nf = gf(), nh = gh();
   for (const k of j.favs || []) { const it = byKey.get(k); if (it) { it.fav = 1; await dbPut("items", it); ok++; } else if (!nf.includes(k)) { nf.push(k); wait++; } }
   for (const k of j.hidden || []) { const it = byKey.get(k); if (it) { it.hidden = 1; await dbPut("items", it); ok++; } else if (!nh.includes(k)) { nh.push(k); wait++; } }
@@ -901,6 +1030,10 @@ function onAct(el) {
   const act = el.dataset.act, pg = el.closest(".page"), p = pg && pg._p;
   switch (act) {
     case "add": $("fileIn").click(); break;
+    case "scan": nativeScan(true); break;
+    case "folder": { const f = decodeURIComponent(el.dataset.v); const own = f === "__imp" ? (i => i.folder == null) : (i => i.folder === f);
+      songsPage(() => (f === "__imp" ? L("folder_imported") : f.split("/").filter(Boolean).slice(-1)[0] || "/"), () => [...items.values()].filter(i => !i.hidden && own(i)).sort(byTitle).map(i => i.id), { raw: true, emptyT: L("empty_songs") }); break; }
+    case "foff": { const f = decodeURIComponent(el.dataset.v); if (offFolders.has(f)) offFolders.delete(f); else offFolders.add(f); store.set("off", [...offFolders]); refreshAll(); break; }
     case "tplay": playQueue(tabIds, 0); break;
     case "tshuf": playQueue(tabIds, 0, true); break;
     case "artist": openArtist(decodeURIComponent(el.dataset.v)); break;
@@ -997,7 +1130,8 @@ function wire() {
     for (const it of await dbAll("items")) items.set(it.id, it);
     pls = await dbAll("pl");
   } catch (e) { toast("Storage error"); }
-  setStatic(); renderTab(); setTimeout(upgradeAll, 1500);
+  setStatic(); renderTab(); setTimeout(upgradeAll, 1500); startScan();
+  try { let t; new MutationObserver(() => { clearTimeout(t); t = setTimeout(observeThumbs, 80); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
   if (eq.on) { /* graph is built on first play */ }
 })();
 })();
