@@ -161,7 +161,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .eqrow label{width:58px;font-size:12.5px;color:var(--mu)}
 .eqrow span.v{width:38px;text-align:right;font-size:12.5px;color:var(--tx)}
 .eqrow input{flex:1}
-.eqbox.off{opacity:.4;pointer-events:none}
+.eqbox.off{opacity:.45}
 
 /* toast & busy */
 #toast{position:fixed;left:50%;bottom:calc(var(--sB) + 140px);transform:translate(-50%,20px);z-index:100;max-width:86%;padding:11px 18px;border-radius:999px;font-size:13.5px;text-align:center;
@@ -172,3 +172,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .bx{width:min(82%,320px);padding:20px;border-radius:22px;background:rgba(18,26,22,.95);border:1px solid var(--gb);text-align:center}
 .bar{height:6px;border-radius:6px;background:rgba(255,255,255,.14);margin-top:14px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--g2),var(--g));transition:width .2s}
+
+/* v1.1 additions */
+.vbtn{position:absolute;top:18px;right:6px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--tx);z-index:3;
+  background:rgba(10,15,13,.62);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--gb)}
+.vbtn.on{color:var(--g);border-color:var(--g)}
+.vbtn.hide{display:none}
+#lsheet{position:absolute;left:0;right:0;bottom:0;height:78%;z-index:5;display:flex;flex-direction:column;transform:translateY(105%);
+  transition:transform .34s cubic-bezier(.2,.8,.2,1);background:rgba(22,28,25,.96);-webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px);
+  border-radius:28px 28px 0 0;border-top:1px solid var(--gb);box-shadow:0 -20px 60px rgba(0,0,0,.6);padding-bottom:var(--sB)}
+#lsheet.open{transform:none}
+.lgrab{align-self:center;width:80px;height:30px;display:grid;place-items:center;color:var(--mu);border-radius:14px}
+.lmini{display:flex;align-items:center;gap:12px;padding:2px 18px 10px}
+.lhd{display:flex;align-items:center;justify-content:space-between;padding:2px 18px 6px;font-size:22px;font-weight:800}
+.lact{display:flex;gap:2px}
+#lsheet .lbody{flex:1;overflow-y:auto;padding:10px 20px 40px;text-align:left}
+#lsheet .lbody p{font-size:21px;font-weight:700;line-height:1.45;color:rgba(255,255,255,.42);margin:0 0 18px}
+#lsheet .lbody p.on{color:var(--g);transform:none;text-shadow:0 0 18px rgba(34,224,122,.35);font-size:23px}
+#lsheet .lbody.plain p{font-size:18px;font-weight:500;color:rgba(255,255,255,.82);margin-bottom:10px}
+#lsheet .lmsg{text-align:center}

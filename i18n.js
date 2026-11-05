@@ -37,6 +37,7 @@ window.I18N = {
     bk_done: "Backup restored: {a} matched, {b} waiting for songs to be added", bk_bad: "This is not a Sargam backup", bk_saved: "Backup file ready",
     t_exit: "Press back again to exit", play_err: "Cannot play: {n}",
     mode_video: "Watch video", mode_audio: "Audio only",
+    eq_short: "EQ", edit_info: "Edit info", f_title: "Song name", f_artist: "Artist", lyr_search_btn: "Save & find lyrics", lyr_paste: "Paste lyrics text",
     done: "Done", lang_pick: "Choose language"
   },
   hi: {
@@ -77,6 +78,7 @@ window.I18N = {
     bk_done: "बैकअप वापस आया: {a} मिले, {b} गाने जुड़ने का इंतज़ार कर रहे हैं", bk_bad: "यह Sargam का बैकअप नहीं है", bk_saved: "बैकअप फाइल तैयार है",
     t_exit: "बाहर निकलने के लिए दोबारा बैक दबाएँ", play_err: "चल नहीं पाया: {n}",
     mode_video: "वीडियो देखें", mode_audio: "सिर्फ़ आवाज़",
+    eq_short: "EQ", edit_info: "जानकारी बदलें", f_title: "गाने का नाम", f_artist: "कलाकार", lyr_search_btn: "सेव करें और लिरिक्स खोजें", lyr_paste: "लिरिक्स टेक्स्ट चिपकाएँ",
     done: "हो गया", lang_pick: "भाषा चुनें"
   }
 };

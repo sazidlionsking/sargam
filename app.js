@@ -101,19 +101,30 @@ function pushLayer(type, close) {
   layers.push({ type, close });
   try { history.pushState({ l: layers.length }, ""); } catch (e) {}
 }
+const NATIVE = !!(window.SargamNative && SargamNative.isNative && SargamNative.onBack);
+let exitArmed = false;
 window.addEventListener("popstate", () => {
   const l = layers.pop();
   if (l) { l.close(); return; }
+  if (NATIVE) return;
   if (tab !== "songs") { setTab("songs"); try { history.pushState({ s: 1 }, ""); } catch (e) {} return; }
   toast(L("t_exit")); rootOnly = true;
   setTimeout(() => { if (rootOnly) { rootOnly = false; try { history.pushState({ s: 1 }, ""); } catch (e) {} } }, 2200);
 });
-try { history.replaceState({ root: 1 }, ""); history.pushState({ s: 1 }, ""); } catch (e) {}
+if (NATIVE) {
+  SargamNative.onBack(() => {
+    if (layers.length) { history.back(); return; }
+    if (tab !== "songs") { setTab("songs"); return; }
+    if (exitArmed) { SargamNative.exit(); return; }
+    exitArmed = true; toast(L("t_exit")); setTimeout(() => { exitArmed = false; }, 2200);
+  });
+} else { try { history.replaceState({ root: 1 }, ""); history.pushState({ s: 1 }, ""); } catch (e) {} }
 
 /* ================= sheet ================= */
 let sheetOpen = false;
 function openSheet(title, fill) {
   $("sheetTitle").textContent = title;
+  $("sheetTitle").dataset.k = "";
   const b = $("sheetBody"); b.innerHTML = ""; fill(b); $("sheet").scrollTop = 0;
   if (!sheetOpen) {
     sheetOpen = true; $("sheet").classList.add("open"); $("scrim").classList.add("open");
@@ -256,16 +267,39 @@ function openHidden() {
     return { title: L("hidden_t"), html: hs.length ? hs.map(i => '<div class="row"><div class="cov">' + covInner(i) + '</div><div class="meta"><div class="t">' + esc(i.title) + '</div><div class="s">' + esc(sub(i)) + '</div></div><button class="chip tap" data-act="unhide" data-id="' + i.id + '">' + esc(L("unhide")) + "</button></div>").join("") : emptyHTML("hide", L("hidden_none"), "") };
   });
 }
-function openEQ() {
-  openPage(() => {
-    const names = ["flat", "bass", "pop", "rock", "classical", "vocal", "dance"]; const nk = { flat: "eq_flat", bass: "eq_bassp", pop: "eq_pop", rock: "eq_rock", classical: "eq_classical", vocal: "eq_vocal", dance: "eq_dance" };
-    const hz = ["60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz"];
-    let h = '<div class="srow" style="cursor:default"><span class="sl">' + esc(L("eq_on")) + '</span><span class="sw' + (eq.on ? " on" : "") + '" id="eqSw" data-act="eqon"></span></div>';
-    h += '<div class="eqbox' + (eq.on ? "" : " off") + '"><div class="sec">' + esc(L("eq_presets")) + '</div><div class="chips" style="padding:4px 12px 10px">' + names.map(n => '<button class="chip tap' + (eq.preset === n ? " on" : "") + '" data-act="eqpre" data-v="' + n + '">' + esc(L(nk[n])) + "</button>").join("") + "</div>";
-    h += hz.map((f, i) => '<div class="eqrow"><label>' + f + '</label><input type="range" min="-12" max="12" step="1" value="' + eq.g[i] + '" data-eqb="' + i + '"><span class="v">' + eq.g[i] + " dB</span></div>").join("");
-    h += '<div class="sec">' + esc(L("eq_bass")) + '</div><div class="eqrow"><label></label><input type="range" min="0" max="15" step="1" value="' + eq.bass + '" data-eqbass="1"><span class="v">' + eq.bass + " dB</span></div></div>";
-    h += '<div class="note">' + esc(L("eq_note")) + "</div>";
-    return { title: L("set_eq"), html: h };
+function eqHTML() {
+  const names = ["flat", "bass", "pop", "rock", "classical", "vocal", "dance"]; const nk = { flat: "eq_flat", bass: "eq_bassp", pop: "eq_pop", rock: "eq_rock", classical: "eq_classical", vocal: "eq_vocal", dance: "eq_dance" };
+  const hz = ["60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz"];
+  let h = '<div class="srow" style="cursor:default"><span class="sl">' + esc(L("eq_on")) + '</span><span class="sw' + (eq.on ? " on" : "") + '" data-act="eqon"></span></div>';
+  h += '<div class="eqbox' + (eq.on ? "" : " off") + '"><div class="sec">' + esc(L("eq_presets")) + '</div><div class="chips" style="padding:4px 12px 10px">' + names.map(n => '<button class="chip tap' + (eq.preset === n ? " on" : "") + '" data-act="eqpre" data-v="' + n + '">' + esc(L(nk[n])) + "</button>").join("") + "</div>";
+  h += hz.map((f, i) => '<div class="eqrow"><label>' + f + '</label><input type="range" min="-12" max="12" step="1" value="' + eq.g[i] + '" data-eqb="' + i + '"><span class="v">' + eq.g[i] + " dB</span></div>").join("");
+  h += '<div class="sec">' + esc(L("eq_bass")) + '</div><div class="eqrow"><label></label><input type="range" min="0" max="15" step="1" value="' + eq.bass + '" data-eqbass="1"><span class="v">' + eq.bass + " dB</span></div></div>";
+  return h + '<div class="note">' + esc(L("eq_note")) + "</div>";
+}
+function openEQ() { openPage(() => ({ title: L("set_eq"), html: eqHTML() })); }
+function eqSheet() { openSheet(L("set_eq"), b => { b.innerHTML = eqHTML(); b.querySelectorAll("input[type=range]").forEach(setP); }); $("sheetTitle").dataset.k = "eq"; }
+function infoSheet(id) {
+  const it = items.get(id); if (!it) return;
+  openSheet(L("edit_info"), b => {
+    const t = mk("input", "field"); t.value = it.title; t.placeholder = L("f_title");
+    const a = mk("input", "field"); a.value = it.artist; a.placeholder = L("f_artist"); a.style.marginTop = "8px";
+    b.appendChild(t); b.appendChild(a);
+    const save = async () => { const nt = t.value.trim(); if (nt) it.title = nt; it.artist = a.value.trim(); await dbPut("items", it); refreshAll(); if (curId === it.id) uiTrack(); };
+    const acts = mk("div", "sh-actions");
+    const s1 = mk("button", "chip tap", esc(L("save"))); s1.onclick = async () => { await save(); closeSheet(); };
+    const s2 = mk("button", "chip g tap", esc(L("lyr_search_btn"))); s2.onclick = async () => { await save(); closeSheet(); findOnline(it); };
+    acts.appendChild(s1); acts.appendChild(s2); b.appendChild(acts);
+    srow(b, "lyrics", L("lyr_paste"), () => pasteLyrSheet(id));
+    srow(b, "add", L("lyr_add"), () => { lrcTarget = id; $("lrcIn").value = ""; $("lrcIn").click(); });
+  });
+}
+function pasteLyrSheet(id) {
+  const it = items.get(id); if (!it) return;
+  openSheet(L("lyr_paste"), b => {
+    const ta = mk("textarea", "field"); ta.value = it.lyrics || ""; b.appendChild(ta);
+    const a = mk("div", "sh-actions"); const o = mk("button", "chip g tap", esc(L("save")));
+    o.onclick = async () => { it.lyrics = ta.value.trim(); await dbPut("items", it); closeSheet(); if (curId === id) { lyr.data = parseLyrics(it.lyrics); lyr.state = ""; lyr.idx = -1; renderLyrics(); } toast(L("lyr_saved")); };
+    a.appendChild(o); b.appendChild(a);
   });
 }
 function openBackup() {
@@ -334,6 +368,7 @@ function openItemMenu(id, listEl) {
     srow(b, "playlist", L("menu_addpl"), () => addToPlSheet(id));
     srow(b, "speed", L("menu_speed"), () => speedSheet(), { val: speed + "x" });
     srow(b, "timer", L("menu_sleep"), () => sleepSheet());
+    srow(b, "edit", L("edit_info"), () => infoSheet(id));
     srow(b, "hide", L("menu_hide"), () => { closeSheet(); hideItem(id); });
     if (plId) srow(b, "minus", L("menu_remove_pl"), () => { closeSheet(); removeFromPl(plId, id); });
     srow(b, "trash", L("menu_delete"), () => deleteSheet(id), { cls: "danger" });
@@ -416,13 +451,18 @@ function probe(file, kind) {
       const dur = isFinite(m.duration) ? m.duration : 0;
       if (kind !== "v") return fin({ dur });
       if (!m.videoWidth) return fin({ dur, audioOnly: true });
+      let retried = false;
       m.onseeked = () => {
         try {
           const c = document.createElement("canvas"); const r = m.videoWidth / m.videoHeight || 1.78; c.width = 240; c.height = Math.round(240 / r) || 135;
-          c.getContext("2d").drawImage(m, 0, 0, c.width, c.height); fin({ dur, thumb: c.toDataURL("image/jpeg", 0.7) });
+          const g = c.getContext("2d"); g.drawImage(m, 0, 0, c.width, c.height);
+          const px = g.getImageData(0, 0, c.width, c.height).data; let sum = 0, n = 0;
+          for (let i = 0; i < px.length; i += 16) { sum += px[i] + px[i + 1] + px[i + 2]; n += 3; }
+          if (sum / n < 14 && !retried && dur > 4) { retried = true; m.currentTime = dur * 0.5; return; }
+          fin({ dur, thumb: c.toDataURL("image/jpeg", 0.7) });
         } catch (e) { fin({ dur }); }
       };
-      try { m.currentTime = Math.max(0.1, Math.min(1, dur / 3 || 0.1)); } catch (e) { fin({ dur }); }
+      try { m.currentTime = Math.max(0.5, Math.min(dur * 0.2, 25)); } catch (e) { fin({ dur }); }
     };
     m.src = u;
   });
@@ -468,6 +508,7 @@ async function importFiles(list) {
 
 /* ================= lyrics ================= */
 const lyr = { on: false, data: null, idx: -1, state: "", tried: {} };
+let lrcTarget = null;
 function parseLyrics(t) {
   if (!t) return null;
   const out = []; let synced = false;
@@ -484,17 +525,23 @@ function loadLyrics() {
   renderLyrics();
   if (lyr.on && it && !lyr.data && !lyr.tried[it.id]) findOnline(it);
 }
+function openLyrics() {
+  if (!curItem()) return;
+  if (lyr.on) { history.back(); return; }
+  lyr.on = true; $("lsheet").classList.add("open"); $("xLyr").classList.add("on");
+  pushLayer("lyr", () => { lyr.on = false; $("lsheet").classList.remove("open"); $("xLyr").classList.remove("on"); });
+  loadLyrics();
+}
 function renderLyrics() {
-  const box = $("fLyr"); if (!box) return; box.classList.toggle("on", lyr.on); $("xLyr").classList.toggle("on", lyr.on);
-  if (!lyr.on) return;
-  const it = curItem(); if (!it) return;
-  let bar = '<button class="chip tap" data-act="lfind">' + esc(L("lyr_find")) + '</button><button class="chip tap" data-act="ladd">' + esc(L("lyr_add")) + "</button>";
-  if (lyr.data) bar += '<button class="chip tap" data-act="lrem">' + esc(L("lyr_remove")) + "</button>";
-  let body;
-  if (lyr.state === "search") body = '<div class="lmsg">' + esc(L("lyr_search")) + "</div>";
-  else if (lyr.data && lyr.data.lines.length) body = lyr.data.lines.map((l, i) => '<p data-i="' + i + '">' + esc(l.text || "♪") + "</p>").join("");
-  else body = '<div class="lmsg">' + esc(lyr.state === "offline" ? L("lyr_offline") : lyr.state === "none" ? L("lyr_none") : L("lyr_empty")) + "</div>";
-  box.innerHTML = '<div class="lbar">' + bar + '</div><div class="lbody' + (lyr.data && !lyr.data.synced ? " plain" : "") + '" id="lbody">' + body + "</div>";
+  const body = $("lbody"); if (!body) return; const it = curItem(); if (!it) return;
+  $("lT").textContent = it.title; $("lS").textContent = it.artist || L("unknown"); $("lCov").innerHTML = covInner(it);
+  $("lDel").style.display = lyr.data ? "" : "none";
+  const btns = '<div class="chips" style="justify-content:center;margin-top:14px"><button class="chip tap" data-act="lfind">' + esc(L("lyr_find")) + '</button><button class="chip tap" data-act="ledit">' + esc(L("edit_info")) + "</button></div>";
+  let h;
+  if (lyr.state === "search") h = '<div class="lmsg">' + esc(L("lyr_search")) + "</div>";
+  else if (lyr.data && lyr.data.lines.length) h = lyr.data.lines.map((l, i) => '<p data-i="' + i + '">' + esc(l.text || "♪") + "</p>").join("");
+  else h = '<div class="lmsg">' + esc(lyr.state === "offline" ? L("lyr_offline") : lyr.state === "none" ? L("lyr_none") : L("lyr_empty")) + btns + "</div>";
+  body.className = "lbody" + (lyr.data && !lyr.data.synced ? " plain" : ""); body.innerHTML = h;
 }
 async function fetchLrclib(it) {
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 12000);
@@ -507,6 +554,9 @@ async function fetchLrclib(it) {
     const q2 = new URLSearchParams(it.artist ? { track_name: it.title, artist_name: it.artist } : { q: it.title });
     const r2 = await fetch("https://lrclib.net/api/search?" + q2, { signal: ctl.signal });
     if (r2.ok) { const a = await r2.json(); if (Array.isArray(a)) { const b = a.find(x => x.syncedLyrics) || a.find(x => x.plainLyrics); if (b) return b.syncedLyrics || b.plainLyrics; } }
+    const clean2 = it.title.replace(/\(.*?\)|\[.*?\]/g, " ").replace(/\b(prod\.?\s*by|official|video|audio|lyrical|lyrics|full song|hd)\b.*$/i, "").replace(/\s+/g, " ").trim();
+    const r3 = await fetch("https://lrclib.net/api/search?" + new URLSearchParams({ q: (clean2 + " " + (it.artist || "")).trim() }), { signal: ctl.signal });
+    if (r3.ok) { const a = await r3.json(); if (Array.isArray(a)) { const b = a.find(x => x.syncedLyrics) || a.find(x => x.plainLyrics); if (b) return b.syncedLyrics || b.plainLyrics; } }
     return null;
   } finally { clearTimeout(to); }
 }
@@ -514,7 +564,7 @@ async function findOnline(it) {
   lyr.tried[it.id] = 1; lyr.state = "search"; renderLyrics();
   let t = null, err = false;
   try { t = await fetchLrclib(it); } catch (e) { err = true; }
-  if (t) { it.lyrics = t; await dbPut("items", it); toast(L("lyr_saved")); }
+  if (t) { it.lyrics = t; await dbPut("items", it); toast(L("lyr_saved")); } else toast(L(err ? "lyr_offline" : "lyr_none"));
   if (curId === it.id) { lyr.data = parseLyrics(it.lyrics); lyr.state = t ? "" : err ? "offline" : "none"; lyr.idx = -1; renderLyrics(); }
 }
 function syncLyrics(time) {
@@ -545,7 +595,7 @@ function playQueue(ids, i, forceShuffle) {
 function load(auto) {
   const it = items.get(queue[qi]); if (!it) return;
   curId = it.id; if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(it.blob);
-  mode = it.kind === "v" ? vpref : "audio";
+  mode = "audio";
   const el = activeEl(), other = el === aud ? vid : aud;
   other.pause(); other.removeAttribute("src"); try { other.load(); } catch (e) {}
   el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
@@ -591,7 +641,7 @@ function cycleRepeat() { rep = rep === "off" ? "all" : rep === "all" ? "one" : "
 function setMode(m) {
   const it = curItem(); if (!it || it.kind !== "v" || m === mode) return;
   const old = activeEl(), t = old.currentTime, was = !old.paused; old.pause(); old.removeAttribute("src"); try { old.load(); } catch (e) {}
-  mode = m; vpref = m; store.set("vmode", m);
+  mode = m;
   const el = activeEl(); el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
   el.addEventListener("loadedmetadata", function f() { el.removeEventListener("loadedmetadata", f); try { el.currentTime = t; } catch (e) {} if (was) playEl(el); });
   uiTrack();
@@ -630,11 +680,13 @@ function eqApply() {
 function buildFull() {
   $("full").innerHTML =
     '<div id="fbg"></div><div class="fhead"><button class="ib tap" id="fClose">' + ic("down") + '</button><div class="fh-t" id="fHeadT"></div><button class="ib tap" id="fMore">' + ic("more") + "</button></div>" +
-    '<div class="fart" id="fArt"><div class="fcover" id="fCover"></div><video id="vid" playsinline></video><div class="flyr" id="fLyr"></div></div>' +
+    '<div class="fart" id="fArt"><div class="fcover" id="fCover"></div><video id="vid" playsinline></video><button class="vbtn tap hide" id="fVid"></button></div>' +
     '<div class="finfo"><div class="meta"><div class="fi-t" id="fT"></div><div class="fi-s" id="fS"></div></div><button class="ib tap" id="fHeart"></button></div>' +
     '<div class="fseek"><input type="range" id="seek" min="0" max="1000" value="0"><div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div></div>' +
     '<div class="fctl"><button class="cb tap" id="cShuf">' + ic("shuffle") + '</button><button class="cb sm tap" id="cPrev">' + ic("prev") + '</button><button class="bigplay" id="cPlay"></button><button class="cb sm tap" id="cNext">' + ic("next") + '</button><button class="cb tap" id="cRep"></button></div>' +
-    '<div class="fext"><button class="tap" id="xLyr">' + ic("lyrics") + '<span id="xLyrT"></span></button><button class="tap hide" id="xMode"></button><button class="tap" id="xSleep">' + ic("timer") + '<span id="xSleepT"></span></button><button class="tap" id="xSpeed">' + ic("speed") + '<span id="xSpeedT"></span></button></div>';
+    '<div class="fext"><button class="tap" id="xLyr">' + ic("lyrics") + '<span id="xLyrT"></span></button><button class="tap" id="xEq">' + ic("eq") + '<span id="xEqT"></span></button><button class="tap" id="xSleep">' + ic("timer") + '<span id="xSleepT"></span></button><button class="tap" id="xSpeed">' + ic("speed") + '<span id="xSpeedT"></span></button></div>' +
+    '<div id="lsheet"><button class="lgrab tap" id="lGrab">' + ic("down") + '</button><div class="lmini"><div class="cov" id="lCov"></div><div class="meta"><div class="t" id="lT"></div><div class="s" id="lS"></div></div></div>' +
+    '<div class="lhd"><span id="lTitle"></span><span class="lact"><button class="ib tap" id="lEdit">' + ic("edit") + '</button><button class="ib tap" id="lDel">' + ic("trash") + '</button></span></div><div class="lbody" id="lbody"></div></div>';
   $("mini").innerHTML = '<div class="cov" id="mCov"></div><div class="meta"><div class="t" id="mT"></div><div class="s" id="mS"></div></div><button class="mb tap pp" id="mPlay"></button><button class="mb tap" id="mNext">' + ic("next") + "</button>";
   vid = $("vid");
 }
@@ -648,8 +700,7 @@ function uiTrack() {
   $("fCover").innerHTML = it.thumb ? '<img alt="" src="' + it.thumb + '">' : ic(it.kind === "v" ? "video" : "note");
   $("fbg").style.backgroundImage = it.thumb ? "url(" + it.thumb + ")" : "none";
   $("fArt").classList.toggle("m-video", it.kind === "v" && mode === "video");
-  const xm = $("xMode"); xm.classList.toggle("hide", it.kind !== "v");
-  if (it.kind === "v") { xm.innerHTML = ic(mode === "video" ? "headset" : "video") + "<span>" + esc(mode === "video" ? L("mode_audio") : L("mode_video")) + "</span>"; }
+  const vb = $("fVid"); vb.classList.toggle("hide", it.kind !== "v"); vb.classList.toggle("on", mode === "video"); vb.innerHTML = ic(mode === "video" ? "headset" : "video");
   $("tDur").textContent = fmt(it.dur); uiHeart(); uiState(); uiShuf(); uiSleep(); uiTime(true);
   loadLyrics();
 }
@@ -664,7 +715,7 @@ function uiShuf() {
 }
 function uiSleep() { const b = $("xSleep"); if (!b) return; b.classList.toggle("on", !!(sleep.end || sleep.song)); $("xSleepT").textContent = sleep.song ? L("sleep_song").split(" ").slice(-2).join(" ") : sleep.end ? Math.max(1, Math.ceil((sleep.end - Date.now()) / 60000)) + " min" : L("menu_sleep"); }
 let seeking = false;
-const setP = r => r.style.setProperty("--p", (r.value / 10) + "%");
+const setP = r => r.style.setProperty("--p", ((r.value - (+r.min || 0)) / ((+r.max || 1000) - (+r.min || 0)) * 100) + "%");
 function uiTime(force) {
   const el = activeEl(), it = curItem(); if (!it) return;
   const d = isFinite(el.duration) && el.duration > 0 ? el.duration : it.dur;
@@ -679,7 +730,7 @@ function openFull() {
 function setStatic() {
   document.documentElement.lang = lang;
   $("bSearch").innerHTML = ic("search"); $("bAdd").innerHTML = ic("add"); $("bSet").innerHTML = ic("settings");
-  $("fHeadT").textContent = L("now_playing"); $("xLyrT").textContent = L("lyrics");
+  $("fHeadT").textContent = L("now_playing"); $("xLyrT").textContent = L("lyrics"); $("xEqT").textContent = L("eq_short"); $("lTitle").textContent = L("lyrics");
   drawNav(); uiShuf(); uiSleep(); if (curItem()) uiTrack();
 }
 function refreshAll() { renderTab(); pages.forEach(p => p.refresh()); }
@@ -770,14 +821,13 @@ function onAct(el) {
     case "backup": openBackup(); break;
     case "about": openSheet(L("set_about"), b => { b.appendChild(mk("div", "msg", esc(L("about_text")) + '<br><br><b style="color:var(--g);font-size:17px">' + esc(L("created_by")) + "</b><br>" + esc(L("version")))); }); break;
     case "unhide": unhideItem(+el.dataset.id); break;
-    case "eqon": eq.on = !eq.on; eqApply(); refreshAll(); break;
-    case "eqpre": eq.preset = el.dataset.v; eq.g = PRESETS[eq.preset].slice(); eq.bass = eq.preset === "bass" ? 8 : 0; eqApply(); refreshAll(); break;
+    case "eqon": eq.on = !eq.on; eqApply(); refreshAll(); if ($("sheetTitle").dataset.k === "eq") eqSheet(); break;
+    case "eqpre": eq.preset = el.dataset.v; eq.g = PRESETS[eq.preset].slice(); eq.bass = eq.preset === "bass" ? 8 : 0; eq.on = true; eqApply(); refreshAll(); if ($("sheetTitle").dataset.k === "eq") eqSheet(); break;
     case "bkexp": exportSheet(); break;
     case "bkfile": $("bkIn").value = ""; $("bkIn").click(); break;
     case "bkpaste": pasteSheet(); break;
     case "lfind": { const it = curItem(); if (it) { lyr.tried[it.id] = 0; findOnline(it); } break; }
-    case "ladd": $("lrcIn").value = ""; $("lrcIn").click(); break;
-    case "lrem": { const it = curItem(); if (it) { it.lyrics = ""; dbPut("items", it); lyr.tried[it.id] = 1; lyr.data = null; lyr.state = ""; renderLyrics(); } break; }
+    case "ledit": if (curItem()) infoSheet(curId); break;
   }
 }
 document.addEventListener("click", e => {
@@ -791,8 +841,9 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("input", e => {
   const t = e.target;
-  if (t.dataset && t.dataset.eqb != null) { eq.g[+t.dataset.eqb] = +t.value; eq.preset = ""; t.nextElementSibling.textContent = t.value + " dB"; eqApply(); }
-  else if (t.dataset && t.dataset.eqbass != null) { eq.bass = +t.value; t.nextElementSibling.textContent = t.value + " dB"; eqApply(); }
+  const live = () => { eq.on = true; document.querySelectorAll(".sw").forEach(x => x.classList.add("on")); document.querySelectorAll(".eqbox").forEach(x => x.classList.remove("off")); };
+  if (t.dataset && t.dataset.eqb != null) { eq.g[+t.dataset.eqb] = +t.value; eq.preset = ""; t.nextElementSibling.textContent = t.value + " dB"; setP(t); live(); eqApply(); }
+  else if (t.dataset && t.dataset.eqbass != null) { eq.bass = +t.value; t.nextElementSibling.textContent = t.value + " dB"; setP(t); live(); eqApply(); }
 });
 
 function wire() {
@@ -815,15 +866,18 @@ function wire() {
   $("fHeart").onclick = () => { const it = curItem(); if (it) setFav(it.id, !it.fav); };
   $("cPlay").onclick = togglePlay; $("cNext").onclick = () => next(false); $("cPrev").onclick = prev;
   $("cShuf").onclick = toggleShuffle; $("cRep").onclick = cycleRepeat;
-  $("xLyr").onclick = () => { lyr.on = !lyr.on; renderLyrics(); if (lyr.on) loadLyrics(); };
-  $("xMode").onclick = () => setMode(mode === "video" ? "audio" : "video");
+  $("xLyr").onclick = openLyrics; $("lGrab").onclick = () => history.back();
+  $("lEdit").onclick = () => { if (curItem()) infoSheet(curId); };
+  $("lDel").onclick = () => { const it = curItem(); if (it) { it.lyrics = ""; dbPut("items", it); lyr.tried[it.id] = 1; lyr.data = null; lyr.state = ""; renderLyrics(); } };
+  $("fVid").onclick = () => setMode(mode === "video" ? "audio" : "video");
+  $("xEq").onclick = eqSheet;
   $("xSleep").onclick = sleepSheet; $("xSpeed").onclick = speedSheet;
   const sk = $("seek");
   sk.addEventListener("input", () => { seeking = true; setP(sk); const it = curItem(); const el = activeEl(); const d = isFinite(el.duration) && el.duration > 0 ? el.duration : (it ? it.dur : 0); $("tCur").textContent = fmt(sk.value / 1000 * d); });
   sk.addEventListener("change", () => { const it = curItem(); const el = activeEl(); const d = isFinite(el.duration) && el.duration > 0 ? el.duration : (it ? it.dur : 0); if (d) el.currentTime = sk.value / 1000 * d; seeking = false; });
   $("fileIn").onchange = e => { const f = e.target.files; if (f && f.length) importFiles(f); e.target.value = ""; };
   $("lrcIn").onchange = async e => {
-    const f = e.target.files && e.target.files[0]; const it = curItem(); if (!f || !it) return;
+    const f = e.target.files && e.target.files[0]; const it = items.get(lrcTarget != null ? lrcTarget : curId); if (!f || !it) return;
     try { it.lyrics = await f.text(); await dbPut("items", it); lyr.data = parseLyrics(it.lyrics); lyr.state = ""; lyr.idx = -1; renderLyrics(); toast(L("lyr_saved")); } catch (err) {}
     e.target.value = "";
   };
