@@ -77,7 +77,8 @@ const dbDel = (s, k) => req(s, "readwrite", o => o.delete(k));
 const items = new Map();
 let pls = [];
 let tab = store.get("tab", "songs");
-const TABS = ["songs", "videos", "artists", "albums", "playlists"];
+const TABS = ["songs", "artists", "albums", "playlists"];
+let chip = store.get("chip", "all");
 const TABIC = { songs: "note", videos: "video", artists: "person", albums: "album", playlists: "playlist" };
 if (!TABS.includes(tab)) tab = "songs";
 const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
@@ -176,7 +177,7 @@ function covInner(it) { return it.thumb ? '<img alt="" src="' + it.thumb + '">' 
 const sub = it => (it.artist || L("unknown")) + (it.dur ? " · " + fmt(it.dur) : "");
 function rowHTML(it, i, o) {
   return '<div class="row tap' + (curId === it.id ? " now" : "") + '" data-id="' + it.id + '" data-i="' + i + '">' +
-    '<div class="cov">' + covInner(it) + '</div><div class="meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(sub(it)) + "</div></div>" +
+    '<div class="cov">' + covInner(it) + (it.kind === "v" ? '<i class="vtag">' + ic("video") + "</i>" : "") + '</div><div class="meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(sub(it)) + "</div></div>" +
     (it.fav ? '<span class="fv">' + ic("heart") + "</span>" : "") +
     (o.reorder ? '<button class="mv tap" data-up="' + i + '">' + ic("up") + '</button><button class="mv tap" data-dn="' + i + '">' + ic("down") + "</button>"
       : '<button class="more tap" data-more="' + it.id + '">' + ic("more") + "</button>") + "</div>";
@@ -191,7 +192,7 @@ const srowH = (act, icon, label, val, extra) => '<button class="srow tap" data-a
 /* ================= tabs ================= */
 function groupBy(field) {
   const m = new Map();
-  for (const it of vis("a")) { const k = it[field] || ""; if (!m.has(k)) m.set(k, []); m.get(k).push(it.id); }
+  for (const it of vis()) { const k = it[field] || ""; if (!m.has(k)) m.set(k, []); m.get(k).push(it.id); }
   return [...m.entries()].sort((a, b) => (a[0] || "￿").localeCompare(b[0] || "￿", undefined, { sensitivity: "base" }));
 }
 function trackBar(count, kindKey, ids) {
@@ -200,10 +201,11 @@ function trackBar(count, kindKey, ids) {
 let tabIds = [];
 function renderTab() {
   const v = $("view"); const st = v.scrollTop; let h = "";
-  if (tab === "songs" || tab === "videos") {
-    const ids = vis(tab === "songs" ? "a" : "v").map(i => i.id); tabIds = ids;
-    if (!ids.length) h = emptyHTML(tab === "songs" ? "note" : "video", L(tab === "songs" ? "empty_songs" : "empty_videos"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
-    else h = trackBar(ids.length, tab === "songs" ? "songs_n" : "videos_n") + listHTML(ids);
+  if (tab === "songs") {
+    const ids = vis(chip === "a" || chip === "v" ? chip : null).map(i => i.id); tabIds = ids;
+    const chips = '<div class="chips" style="padding:2px 6px 8px">' + [["all", "chip_all"], ["a", "chip_songs"], ["v", "tab_videos"]].map(([k, l]) => '<button class="chip tap' + (chip === k ? " on" : "") + '" data-chip="' + k + '">' + esc(L(l)) + "</button>").join("") + "</div>";
+    if (!ids.length) h = chips + emptyHTML(chip === "v" ? "video" : "note", L(chip === "v" ? "empty_videos" : "empty_songs"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
+    else h = chips + trackBar(ids.length, chip === "v" ? "videos_n" : chip === "a" ? "songs_n" : "items_n") + listHTML(ids);
   } else if (tab === "artists") {
     const g = groupBy("artist");
     h = g.length ? '<div class="list">' + g.map(([k, ids]) => '<div class="row tap" data-act="artist" data-v="' + encodeURIComponent(k) + '"><div class="cov round">' + ic("person") + '</div><div class="meta"><div class="t">' + esc(k || L("unknown")) + '</div><div class="s">' + esc(L("songs_n", { n: ids.length })) + "</div></div></div>").join("") + "</div>"
@@ -236,8 +238,8 @@ function songsPage(titleFn, getIds, o) {
   });
   p.o = o; return p;
 }
-const artistIds = k => vis("a").filter(i => (i.artist || "") === k).map(i => i.id);
-const albumIds = k => vis("a").filter(i => (i.album || "") === k).map(i => i.id);
+const artistIds = k => vis().filter(i => (i.artist || "") === k).map(i => i.id);
+const albumIds = k => vis().filter(i => (i.album || "") === k).map(i => i.id);
 const openArtist = k => songsPage(() => k || L("unknown"), () => artistIds(k));
 const openAlbum = k => songsPage(() => k || L("unknown_album"), () => albumIds(k));
 const openFav = () => songsPage(() => L("favourites"), () => vis().filter(i => i.fav).map(i => i.id), { emptyT: L("favourites"), emptyS: L("fav_empty") });
@@ -284,7 +286,7 @@ function infoSheet(id) {
     const t = mk("input", "field"); t.value = it.title; t.placeholder = L("f_title");
     const a = mk("input", "field"); a.value = it.artist; a.placeholder = L("f_artist"); a.style.marginTop = "8px";
     b.appendChild(t); b.appendChild(a);
-    const save = async () => { const nt = t.value.trim(); if (nt) it.title = nt; it.artist = a.value.trim(); await dbPut("items", it); refreshAll(); if (curId === it.id) uiTrack(); };
+    const save = async () => { const nt = t.value.trim(); if (nt) it.title = nt; it.artist = a.value.trim(); it.edited = 1; await dbPut("items", it); refreshAll(); if (curId === it.id) uiTrack(); };
     const acts = mk("div", "sh-actions");
     const s1 = mk("button", "chip tap", esc(L("save"))); s1.onclick = async () => { await save(); closeSheet(); };
     const s2 = mk("button", "chip g tap", esc(L("lyr_search_btn"))); s2.onclick = async () => { await save(); closeSheet(); findOnline(it); };
@@ -440,29 +442,94 @@ function shrink(blob, max) {
     im.onerror = () => { URL.revokeObjectURL(u); res(null); }; im.src = u;
   });
 }
+function shrinkBlob(blob, max, q) {
+  return new Promise(res => {
+    const u = URL.createObjectURL(blob), im = new Image();
+    im.onload = () => {
+      try {
+        const sc = Math.min(1, max / Math.max(im.width, im.height)); const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(im.width * sc)); c.height = Math.max(1, Math.round(im.height * sc));
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob(b => res(b), "image/jpeg", q);
+      } catch (e) { URL.revokeObjectURL(u); res(null); }
+    };
+    im.onerror = () => { URL.revokeObjectURL(u); res(null); }; im.src = u;
+  });
+}
+const fcc = (b, o) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+function mp4Items(buf, s, e, out) {
+  let p = s;
+  while (p + 8 <= e) {
+    const sz = be32(buf, p), t = fcc(buf, p + 4);
+    if (sz < 8 || p + sz > e) break;
+    const ps = p + 8, pe = p + sz;
+    if (t === "udta" || t === "moov") mp4Items(buf, ps, pe, out);
+    else if (t === "meta") mp4Items(buf, ps + 4, pe, out);
+    else if (t === "ilst") {
+      let q = ps;
+      while (q + 8 <= pe) {
+        const isz = be32(buf, q), it = fcc(buf, q + 4);
+        if (isz < 8 || q + isz > pe) break;
+        const d = q + 8;
+        if (d + 16 <= q + isz && fcc(buf, d + 4) === "data") {
+          const dsz = be32(buf, d), flags = be32(buf, d + 8) & 0xffffff, body = buf.subarray(d + 16, Math.min(d + dsz, q + isz));
+          const tx = () => new TextDecoder("utf-8").decode(body).trim();
+          if (it === "\xA9nam") out.title = tx(); else if (it === "\xA9ART") out.artist = tx(); else if (it === "aART" && !out.artist) out.artist = tx();
+          else if (it === "\xA9alb") out.album = tx(); else if (it === "\xA9lyr") out.lyrics = tx();
+          else if (it === "covr") out.cover = new Blob([body], { type: flags === 14 ? "image/png" : "image/jpeg" });
+        }
+        q += isz;
+      }
+    }
+    p += sz;
+  }
+}
+async function readMP4(file) {
+  const out = {};
+  try {
+    let off = 0; const size = file.size;
+    while (off + 8 <= size) {
+      const h = new Uint8Array(await file.slice(off, off + 16).arrayBuffer());
+      let sz = be32(h, 0), hdr = 8; const t = fcc(h, 4);
+      if (sz === 1) { sz = be32(h, 12) + be32(h, 8) * 4294967296; hdr = 16; } else if (sz === 0) sz = size - off;
+      if (sz < hdr) break;
+      if (t === "moov") { if (sz > 40 * 1024 * 1024) break; const mv = new Uint8Array(await file.slice(off + hdr, off + sz).arrayBuffer()); mp4Items(mv, 0, mv.length, out); break; }
+      off += sz;
+    }
+  } catch (e) {}
+  return out;
+}
 function probe(file, kind) {
   return new Promise(res => {
     const u = URL.createObjectURL(file); const m = document.createElement(kind === "v" ? "video" : "audio");
     m.preload = "metadata"; m.muted = true; let done = false;
     const fin = r => { if (done) return; done = true; clearTimeout(to); try { m.removeAttribute("src"); m.load(); } catch (e) {} URL.revokeObjectURL(u); res(r); };
-    const to = setTimeout(() => fin({ dur: 0 }), 9000);
+    const to = setTimeout(() => fin({ dur: 0 }), 20000);
     m.onerror = () => fin({ dur: 0, err: 1 });
     m.onloadedmetadata = () => {
       const dur = isFinite(m.duration) ? m.duration : 0;
       if (kind !== "v") return fin({ dur });
       if (!m.videoWidth) return fin({ dur, audioOnly: true });
-      let retried = false;
-      m.onseeked = () => {
-        try {
-          const c = document.createElement("canvas"); const r = m.videoWidth / m.videoHeight || 1.78; c.width = 240; c.height = Math.round(240 / r) || 135;
-          const g = c.getContext("2d"); g.drawImage(m, 0, 0, c.width, c.height);
-          const px = g.getImageData(0, 0, c.width, c.height).data; let sum = 0, n = 0;
-          for (let i = 0; i < px.length; i += 16) { sum += px[i] + px[i + 1] + px[i + 2]; n += 3; }
-          if (sum / n < 14 && !retried && dur > 4) { retried = true; m.currentTime = dur * 0.5; return; }
-          fin({ dur, thumb: c.toDataURL("image/jpeg", 0.7) });
-        } catch (e) { fin({ dur }); }
+      const fr = dur > 4 ? [0.12, 0.28, 0.45, 0.62, 0.8] : [0.3]; let k = 0, best = null, bestL = -1;
+      const cv = document.createElement("canvas");
+      const grab = () => {
+        const r = m.videoWidth / m.videoHeight || 1.78; cv.width = 640; cv.height = Math.round(640 / r) || 360;
+        const g = cv.getContext("2d"); g.drawImage(m, 0, 0, cv.width, cv.height);
+        const px = g.getImageData(0, 0, cv.width, cv.height).data; let sum = 0, n = 0;
+        for (let i = 0; i < px.length; i += 64) { sum += px[i] + px[i + 1] + px[i + 2]; n += 3; }
+        if (sum / n > bestL) { bestL = sum / n; best = document.createElement("canvas"); best.width = cv.width; best.height = cv.height; best.getContext("2d").drawImage(cv, 0, 0); }
       };
-      try { m.currentTime = Math.max(0.5, Math.min(dur * 0.2, 25)); } catch (e) { fin({ dur }); }
+      const finish = () => {
+        if (!best) return fin({ dur });
+        const t = document.createElement("canvas"); t.width = 240; t.height = Math.round(240 * best.height / best.width);
+        t.getContext("2d").drawImage(best, 0, 0, t.width, t.height);
+        const thumb = t.toDataURL("image/jpeg", 0.75);
+        best.toBlob(bl => fin({ dur, thumb, art: bl }), "image/jpeg", 0.88);
+      };
+      m.onseeked = () => {
+        try { grab(); } catch (e) {}
+        if (++k < fr.length) { try { m.currentTime = Math.max(0.3, dur * fr[k]); } catch (e) { finish(); } } else finish();
+      };
+      try { m.currentTime = Math.max(0.3, dur * fr[0]); } catch (e) { fin({ dur }); }
     };
     m.src = u;
   });
@@ -470,18 +537,26 @@ function probe(file, kind) {
 const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|wma|amr)$/i, VIDEO_EXT = /\.(mp4|mkv|webm|3gp|avi|mov|m4v)$/i;
 const isMedia = f => /^(audio|video)\//.test(f.type) || AUDIO_EXT.test(f.name) || VIDEO_EXT.test(f.name);
 const baseOf = n => n.replace(/\.[^.]+$/, "").toLowerCase().trim();
+const NOISE = /\b(official|music video|video|lyrical|lyrics|audio|full song|full video|hd|4k|1080p|720p|remix|visualizer|song)\b/i;
 function nameParts(n) {
-  const b = n.replace(/\.[^.]+$/, "").replace(/_/g, " ").trim(); const m = b.match(/^(.{1,40}?)\s+-\s+(.+)$/);
-  return m ? { artist: m[1].trim(), title: m[2].trim() } : { artist: "", title: b };
+  let b = n.replace(/\.[^.]+$/, "").replace(/_/g, " ").trim();
+  b = b.replace(/\(([^)]*)\)|\[([^\]]*)\]/g, (m, x, y) => (NOISE.test(x || y || "") ? " " : m)).replace(/\s+/g, " ").trim();
+  const bars = b.split(/\s*[|｜]\s*/).filter(Boolean);
+  if (bars.length > 1) return { title: bars[0].trim(), artist: NOISE.test(bars[1]) || bars[1].length > 40 ? "" : bars[1].trim() };
+  const m = b.match(/^(.{1,40}?)\s+[-–—]\s+(.+)$/);
+  if (m) return NOISE.test(m[2]) ? { artist: "", title: m[1].trim() } : { artist: m[1].trim(), title: m[2].trim() };
+  return { artist: "", title: b };
 }
 async function buildItem(f, key) {
   let kind = (/^video\//.test(f.type) || VIDEO_EXT.test(f.name)) && !AUDIO_EXT.test(f.name) ? "v" : "a";
-  const tags = kind === "a" ? await readID3(f) : {};
+  const tags = /\.(mp4|m4a|m4v|mov|3gp)$/i.test(f.name) ? await readMP4(f) : kind === "a" ? await readID3(f) : {};
   const pr = await probe(f, kind);
   if (kind === "v" && pr.audioOnly) kind = "a";
-  let thumb = null; if (tags.cover) thumb = await shrink(tags.cover); else if (pr.thumb) thumb = pr.thumb;
+  let thumb = null, art = null;
+  if (tags.cover) { thumb = await shrink(tags.cover, 320); art = await shrinkBlob(tags.cover, 900, 0.9); }
+  else if (pr.thumb) { thumb = pr.thumb; art = pr.art || null; }
   const np = nameParts(f.name);
-  return { kind, title: tags.title || np.title, artist: tags.artist || np.artist || "", album: tags.album || "", dur: pr.dur || 0, blob: f, thumb, lyrics: tags.lyrics || "", base: baseOf(f.name), key, hidden: 0, fav: 0, added: Date.now(), size: f.size };
+  return { kind, title: tags.title || np.title, artist: tags.artist || np.artist || "", album: tags.album || "", dur: pr.dur || 0, blob: f, thumb, art, tagsDone: 1, lyrics: tags.lyrics || "", base: baseOf(f.name), key, hidden: 0, fav: 0, added: Date.now(), size: f.size };
 }
 async function importFiles(list) {
   const all = [...list]; const lrcs = all.filter(f => /\.lrc$/i.test(f.name)); const meds = all.filter(f => !/\.lrc$/i.test(f.name) && isMedia(f));
@@ -578,7 +653,7 @@ function syncLyrics(time) {
 }
 
 /* ================= player ================= */
-let queue = [], orig = [], qi = -1, curId = null, url = null, errCount = 0;
+let queue = [], orig = [], qi = -1, curId = null, url = null, errCount = 0, artUrl = null;
 let shuf = store.get("shuf", false), rep = store.get("rep", "off"), speed = store.get("speed", 1), vpref = store.get("vmode", "video"), mode = "audio";
 const sleep = { t: null, end: 0, song: false };
 let aud, vid;
@@ -690,6 +765,28 @@ function buildFull() {
   $("mini").innerHTML = '<div class="cov" id="mCov"></div><div class="meta"><div class="t" id="mT"></div><div class="s" id="mS"></div></div><button class="mb tap pp" id="mPlay"></button><button class="mb tap" id="mNext">' + ic("next") + "</button>";
   vid = $("vid");
 }
+const eaBusy = new Set();
+async function upgradeItem(it) {
+  if (it.tagsDone && it.art !== undefined) return;
+  try {
+    const mp4 = /\.(mp4|m4a|m4v|mov|3gp)$/i.test(it.blob.name || "");
+    const tags = mp4 ? await readMP4(it.blob) : it.kind === "a" ? await readID3(it.blob) : {};
+    if (!it.edited) { if (tags.title) it.title = tags.title; if (tags.artist && !it.artist) it.artist = tags.artist; }
+    if (tags.album && !it.album) it.album = tags.album;
+    if (tags.lyrics && !it.lyrics) it.lyrics = tags.lyrics;
+    if (it.art === undefined) {
+      if (tags.cover) { it.thumb = await shrink(tags.cover, 320); it.art = await shrinkBlob(tags.cover, 900, 0.9); }
+      else if (it.kind === "v") { const pr = await probe(it.blob, "v"); if (pr.thumb) { it.thumb = pr.thumb; it.art = pr.art || null; } else it.art = null; }
+      else it.art = null;
+    }
+    it.tagsDone = 1; await dbPut("items", it);
+  } catch (e) { it.art = it.art === undefined ? null : it.art; it.tagsDone = 1; }
+}
+async function upgradeAll() {
+  let n = 0;
+  for (const it of [...items.values()]) { if (!(it.tagsDone && it.art !== undefined)) { await upgradeItem(it); n++; await new Promise(r => setTimeout(r, 40)); } }
+  if (n) { refreshAll(); if (curItem()) uiTrack(); }
+}
 function uiTrack() {
   const it = curItem(); $("mini").classList.toggle("show", !!it);
   document.querySelectorAll(".row[data-id]").forEach(r => r.classList.toggle("now", +r.dataset.id === curId));
@@ -697,7 +794,10 @@ function uiTrack() {
   $("mT").textContent = it.title; $("mS").textContent = it.artist || L("unknown");
   $("mCov").innerHTML = covInner(it);
   $("fT").textContent = it.title; $("fS").textContent = it.artist || L("unknown");
-  $("fCover").innerHTML = it.thumb ? '<img alt="" src="' + it.thumb + '">' : ic(it.kind === "v" ? "video" : "note");
+  if (artUrl) { URL.revokeObjectURL(artUrl); artUrl = null; }
+  if (it.art) artUrl = URL.createObjectURL(it.art);
+  const big = artUrl || it.thumb;
+  $("fCover").innerHTML = big ? '<img alt="" src="' + big + '">' : ic(it.kind === "v" ? "video" : "note");
   $("fbg").style.backgroundImage = it.thumb ? "url(" + it.thumb + ")" : "none";
   $("fArt").classList.toggle("m-video", it.kind === "v" && mode === "video");
   const vb = $("fVid"); vb.classList.toggle("hide", it.kind !== "v"); vb.classList.toggle("on", mode === "video"); vb.innerHTML = ic(mode === "video" ? "headset" : "video");
@@ -833,6 +933,7 @@ function onAct(el) {
 document.addEventListener("click", e => {
   const t = e.target;
   let n = t.closest("[data-tab]"); if (n) { if (n.dataset.tab !== tab) setTab(n.dataset.tab); return; }
+  n = t.closest("[data-chip]"); if (n) { chip = n.dataset.chip; store.set("chip", chip); renderTab(); return; }
   n = t.closest("[data-more]"); if (n) { openItemMenu(+n.dataset.more, n.closest(".list")); return; }
   n = t.closest("[data-up]"); if (n) { const p = n.closest(".page")._p; movePl(p.o.pl, +n.dataset.up, -1); return; }
   n = t.closest("[data-dn]"); if (n) { const p = n.closest(".page")._p; movePl(p.o.pl, +n.dataset.dn, 1); return; }
@@ -896,7 +997,7 @@ function wire() {
     for (const it of await dbAll("items")) items.set(it.id, it);
     pls = await dbAll("pl");
   } catch (e) { toast("Storage error"); }
-  setStatic(); renderTab();
+  setStatic(); renderTab(); setTimeout(upgradeAll, 1500);
   if (eq.on) { /* graph is built on first play */ }
 })();
 })();

@@ -191,3 +191,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 #lsheet .lbody p.on{color:var(--g);transform:none;text-shadow:0 0 18px rgba(34,224,122,.35);font-size:23px}
 #lsheet .lbody.plain p{font-size:18px;font-weight:500;color:rgba(255,255,255,.82);margin-bottom:10px}
 #lsheet .lmsg{text-align:center}
+
+.cov{position:relative}
+.vtag{position:absolute;right:3px;bottom:3px;width:19px;height:19px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--g);display:grid;place-items:center}
+.vtag .ic{width:12px;height:12px}

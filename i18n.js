@@ -1,6 +1,6 @@
 window.I18N = {
   en: {
-    tab_songs: "Songs", tab_videos: "Videos", tab_artists: "Artists", tab_albums: "Albums", tab_playlists: "Playlists",
+    tab_songs: "Library", chip_all: "All", chip_songs: "Songs", items_n: "{n} items", tab_videos: "Videos", tab_artists: "Artists", tab_albums: "Albums", tab_playlists: "Playlists",
     add_files: "Add files", add_hint: "Pick songs or videos from your phone",
     empty_songs: "No songs yet", empty_videos: "No videos yet", empty_hint: "Tap + to add music from your phone",
     songs_n: "{n} songs", videos_n: "{n} videos", albums_n: "{n} albums",
@@ -41,7 +41,7 @@ window.I18N = {
     done: "Done", lang_pick: "Choose language"
   },
   hi: {
-    tab_songs: "गाने", tab_videos: "वीडियो", tab_artists: "कलाकार", tab_albums: "एल्बम", tab_playlists: "प्लेलिस्ट",
+    tab_songs: "लाइब्रेरी", chip_all: "सभी", chip_songs: "गाने", items_n: "{n} आइटम", tab_videos: "वीडियो", tab_artists: "कलाकार", tab_albums: "एल्बम", tab_playlists: "प्लेलिस्ट",
     add_files: "फाइल जोड़ें", add_hint: "फ़ोन से गाने या वीडियो चुनें",
     empty_songs: "अभी कोई गाना नहीं है", empty_videos: "अभी कोई वीडियो नहीं है", empty_hint: "फ़ोन से म्यूज़िक जोड़ने के लिए + दबाएँ",
     songs_n: "{n} गाने", videos_n: "{n} वीडियो", albums_n: "{n} एल्बम",
