@@ -48,7 +48,12 @@ jobs:
         run: |
           npx cap add android
           npx cap sync android
-
+      - name: Add phone-scan plugin
+        run: |
+          D=android/app/src/main/java/com/sajid/sargam
+          mkdir -p "$D"
+          cp MainActivity.java SargamScanPlugin.java ScanFilter.java "$D/"
+          python3 patch_manifest.py
       - name: Apply Sargam icon and colors
         run: |
           cp -r icon/mipmap-* android/app/src/main/res/
