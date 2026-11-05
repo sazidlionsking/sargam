@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07090a">
+<title>Sargam</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <h1 id="brand">Sargam</h1>
+    <div class="tb">
+      <button class="ib tap" id="bSearch" aria-label="Search"></button>
+      <button class="ib tap" id="bAdd" aria-label="Add"></button>
+      <button class="ib tap" id="bSet" aria-label="Settings"></button>
+    </div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<div id="mini"></div>
+<nav id="nav"></nav>
+<div id="pages"></div>
+<section id="full"></section>
+
+<div id="scrim"></div>
+<div id="sheet"><div id="sheetTitle"></div><div id="sheetBody"></div></div>
+<div id="toast"></div>
+<div id="busy"><div class="bx"><div id="busyT"></div><div class="bar"><i id="busyB"></i></div></div></div>
+
+<input type="file" id="fileIn" multiple style="display:none" accept="audio/*,video/*,.lrc,.mp3,.m4a,.flac,.opus,.ogg,.wav,.aac,.mkv,.mp4,.webm,.3gp">
+<input type="file" id="lrcIn" style="display:none">
+<input type="file" id="bkIn" style="display:none">
+<audio id="aud" preload="auto"></audio>
+
+<script src="native.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
