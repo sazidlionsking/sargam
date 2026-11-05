@@ -15,6 +15,18 @@ jobs:
       - name: Code download
         uses: actions/checkout@v4
 
+      - name: Arrange files into folders
+        run: |
+          mkdir -p www src icon/values signing
+          for f in index.html style.css app.js i18n.js; do [ -f "$f" ] && mv "$f" www/ || true; done
+          [ -f native.js ] && mv native.js src/ || true
+          for f in colors.xml ic_launcher_background.xml; do [ -f "$f" ] && mv "$f" icon/values/ || true; done
+          [ -f splash.png ] && mv splash.png icon/ || true
+          [ -f debug.keystore ] && mv debug.keystore signing/ || true
+          pip install pillow
+          python3 make_icons.py
+          find . -path ./node_modules -prune -o -type f -not -path './.git/*' -print | sort
+
       - name: Node setup
         uses: actions/setup-node@v4
         with:
