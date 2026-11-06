@@ -224,7 +224,7 @@ function renderTab() {
     const g = new Map(), gs = new Map(); let imp = 0, nFiles = 0;
     for (const it of items.values()) { if (it.hidden) continue; if (it.folder == null) { imp++; continue; } nFiles++; g.set(it.folder, (g.get(it.folder) || 0) + 1); gs.set(it.folder, (gs.get(it.folder) || 0) + (it.size || 0)); }
     const rows = [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }));
-    h = rows.length ? '<div class="note">' + esc(L("folders_sum", { n: nFiles, f: rows.length, o: rows.filter(r => offFolders.has(r[0])).length })) + "<br>" + esc(L("folders_hint")) + "<br>" + esc(L("folders_sug")) + "</div>" : "";
+    h = rows.length ? '<div class="note">' + esc(L("folders_sum", { n: nFiles, f: rows.length, o: rows.filter(r => offFolders.has(r[0])).length })) + "<br>" + esc(L("folders_hint")) + "<br>" + esc(L("folders_sug")) + '</div><div class="chips" style="padding:0 6px 8px"><button class="chip tap" data-act="fall" data-v="on">' + esc(L("folders_allon")) + '</button><button class="chip tap" data-act="fall" data-v="off">' + esc(L("folders_alloff")) + "</button></div>" : "";
     h += rows.map(([f, n]) => { const nm = f.split("/").filter(Boolean).slice(-2).join(" / ") || "/"; return '<div class="row tap" data-act="folder" data-v="' + encodeURIComponent(f) + '"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(nm) + '</div><div class="s">' + esc(f || "/") + " · " + esc(L("items_n", { n })) + " · " + esc(fmtSize(gs.get(f))) + '</div></div><span class="sw' + (offFolders.has(f) ? "" : " on") + '" data-act="foff" data-v="' + encodeURIComponent(f) + '"></span></div>'; }).join("");
     if (imp) h += '<div class="row tap" data-act="folder" data-v="__imp"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(L("folder_imported")) + '</div><div class="s">' + esc(L("items_n", { n: imp })) + "</div></div></div>";
     if (!rows.length && !imp) h = emptyHTML("folder", L("folders_empty"), L("scan_hint"), NS() ? '<div style="margin-top:18px"><button class="chip g tap" data-act="scan">' + ic("search", "s") + esc(L("scan_now")) + "</button></div>" : "");
@@ -1176,6 +1176,7 @@ function onAct(el) {
       [["name", "sort_name"], ["size", "sort_size"], ["added", "sort_added"], ["dur", "sort_dur"]].forEach(([k, l]) => srow(b, "swap", L(l), () => { sortO = { k, d: sortO.k === k ? -sortO.d : (k === "name" ? 1 : -1) }; store.set("sort", sortO); closeSheet(); refreshAll(); }, { check: sortO.k === k }));
       srow(b, "swap", sortO.d > 0 ? L("sort_asc") : L("sort_desc"), () => { sortO = { k: sortO.k, d: -sortO.d }; store.set("sort", sortO); closeSheet(); refreshAll(); });
     }); break;
+    case "fall": { const on = el.dataset.v === "on"; for (const it of items.values()) { if (it.folder == null) continue; if (on) offFolders.delete(it.folder); else offFolders.add(it.folder); } store.set("off", [...offFolders]); renderTab(); break; }
     case "foff": { const f = decodeURIComponent(el.dataset.v); if (offFolders.has(f)) offFolders.delete(f); else offFolders.add(f); store.set("off", [...offFolders]); refreshAll(); break; }
     case "tplay": playQueue(tabIds, 0); break;
     case "tshuf": playQueue(tabIds, 0, true); break;

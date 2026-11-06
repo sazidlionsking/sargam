@@ -9,7 +9,7 @@ public final class ScanFilter {
     private ScanFilter() {}
 
     private static final String[] DIR_WORDS = {
-        "record", "voice", "/ptt", "dcim/camera", "screenshot", "ringtone", "alarms", "notifications", "voicemail"
+        "record", "voice", "whatsapp", "/ptt", "dcim/camera", "screenshot", "ringtone", "alarms", "notifications", "voicemail"
     };
     private static final Pattern DIR_CALL = Pattern.compile("(^|/)call|[ _\\-]call");
     private static final Pattern NAME_REC = Pattern.compile(

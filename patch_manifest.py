@@ -39,3 +39,25 @@ rd = "android/app/src/main/res/drawable"
 os.makedirs(rd, exist_ok=True)
 shutil.copy("ic_stat_sargam.xml", rd)
 print("manifest + media service patched")
+
+# fixed debug signing key: set it explicitly so every build is signed the same way and updates install over old ones
+gp = "android/app/build.gradle"
+g = open(gp, encoding="utf-8").read()
+if "SARGAM_SIGN" not in g:
+    ks = os.path.abspath("signing/debug.keystore").replace("\\", "/")
+    assert os.path.exists(ks), "signing/debug.keystore missing"
+    block = (
+        "\n    // SARGAM_SIGN: same key on every build\n"
+        "    signingConfigs {\n"
+        "        debug {\n"
+        '            storeFile file("' + ks + '")\n'
+        '            storePassword "android"\n'
+        '            keyAlias "androiddebugkey"\n'
+        '            keyPassword "android"\n'
+        "        }\n"
+        "    }\n"
+    )
+    g2 = re.sub(r"(\nandroid\s*\{)", lambda m: m.group(1) + block, g, count=1)
+    assert g2 != g, "android block not found in build.gradle"
+    open(gp, "w", encoding="utf-8").write(g2)
+print("signing patched")
