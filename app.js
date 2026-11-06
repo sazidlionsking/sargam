@@ -217,7 +217,7 @@ function renderTab() {
   if (tab === "songs") {
     const ids = vis(chip === "a" || chip === "v" ? chip : null).map(i => i.id); tabIds = ids;
     const chips = '<div class="chips" style="padding:2px 6px 8px">' + [["all", "chip_all"], ["a", "chip_songs"], ["v", "tab_videos"]].map(([k, l]) => '<button class="chip tap' + (chip === k ? " on" : "") + '" data-chip="' + k + '">' + esc(L(l)) + "</button>").join("") + '<button class="chip tap" data-act="sort" style="margin-left:auto">' + ic("swap", "s") + esc(L("sort_" + sortO.k)) + (sortO.d > 0 ? " ↑" : " ↓") + "</button></div>";
-    const ban = NS() && !scanGranted ? srowH("scan", "search", L("scan_title"), "") : "";
+    const ban = NS() && !scanGranted ? srowH("scan", "search", L("scan_title"), "") : NS() && !allGranted ? srowH("allfiles", "folder", L("allfiles_ban"), "") : "";
     if (!ids.length) h = ban + chips + emptyHTML(chip === "v" ? "video" : "note", L(chip === "v" ? "empty_videos" : "empty_songs"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
     else h = ban + chips + trackBar(ids.length, chip === "v" ? "videos_n" : chip === "a" ? "songs_n" : "items_n") + listHTML(ids);
   } else if (tab === "folders") {
@@ -281,13 +281,13 @@ function openSearch() {
 function openSettings() {
   openPage(() => ({
     title: L("settings"),
-    html: srowH("lang", "globe", L("set_lang"), lang === "hi" ? "हिन्दी" : "English") + (NS() ? srowH("scan", "search", L("scan_now")) : "") + srowH("eq", "eq", L("set_eq"), eq.on ? "ON" : "") +
-      srowH("hidden", "hide", L("set_hidden"), String([...items.values()].filter(i => i.hidden).length)) + srowH("backup", "backup", L("set_backup")) + srowH("about", "info", L("set_about"))
+    html: srowH("lang", "globe", L("set_lang"), lang === "hi" ? "हिन्दी" : "English") + (NS() ? srowH("scan", "search", L("scan_now")) : "") + (NS() && !allGranted ? srowH("allfiles", "folder", L("set_allfiles"), "") : "") + (NS() ? srowH("bin", "trash", L("set_bin"), String([...items.values()].filter(i => i.bin).length)) : "") + srowH("eq", "eq", L("set_eq"), eq.on ? "ON" : "") +
+      srowH("hidden", "hide", L("set_hidden"), String([...items.values()].filter(i => i.hidden && !i.bin).length)) + srowH("backup", "backup", L("set_backup")) + srowH("about", "info", L("set_about"))
   }));
 }
 function openHidden() {
   openPage(() => {
-    const hs = [...items.values()].filter(i => i.hidden).sort(byTitle);
+    const hs = [...items.values()].filter(i => i.hidden && !i.bin).sort(byTitle);
     return { title: L("hidden_t"), html: hs.length ? hs.map(i => '<div class="row"><div class="cov">' + covInner(i) + '</div><div class="meta"><div class="t">' + esc(i.title) + '</div><div class="s">' + esc(sub(i)) + '</div></div><button class="chip tap" data-act="unhide" data-id="' + i.id + '">' + esc(L("unhide")) + "</button></div>").join("") : emptyHTML("hide", L("hidden_none"), "") };
   });
 }
@@ -340,7 +340,7 @@ async function hideItem(id) {
 }
 async function unhideItem(id) { const it = items.get(id); if (!it) return; it.hidden = 0; await dbPut("items", it); refreshAll(); }
 async function deleteItem(id) {
-  { const x = items.get(id); if (x && x.path) { await hideItem(id); return; } }
+  { const x = items.get(id); if (x && x.path) { if (allGranted && NS() && !x.bin) await binItem(id); else await hideItem(id); return; } }
   if (curId === id) stopPlayback();
   await dbDel("items", id); items.delete(id);
   for (const p of pls) { const n = p.ids.length; p.ids = p.ids.filter(x => x !== id); if (p.ids.length !== n) await dbPut("pl", p); }
@@ -386,10 +386,51 @@ function sleepCustom() {
     a.appendChild(o); b.appendChild(a); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 250);
   });
 }
+function confirmSheet(title, msg, fn) {
+  openSheet(title, b => {
+    b.appendChild(mk("div", "msg", esc(msg)));
+    const a = mk("div", "sh-actions");
+    const c = mk("button", "chip tap", esc(L("cancel"))); c.onclick = closeSheet;
+    const o = mk("button", "chip g tap", esc(L("del_ok"))); o.onclick = () => { closeSheet(); fn(); };
+    a.appendChild(c); a.appendChild(o); b.appendChild(a);
+  });
+}
+async function binItem(id) {
+  const it = items.get(id); if (!it) return;
+  if (curId === id) stopPlayback();
+  try {
+    const r = await NS().scan.toBin({ path: it.path });
+    it.orig = it.path; it.path = r.path; it.bin = 1; it.hidden = 1; it.binAt = Date.now(); await dbPut("items", it);
+  } catch (e) { toast(L("bin_fail")); return; }
+  queue = queue.filter(x => x !== id); orig = orig.filter(x => x !== id); if (curId != null) qi = queue.indexOf(curId);
+  refreshAll(); toast(L("bin_done"));
+}
+async function binRestore(id) {
+  const it = items.get(id); if (!it || !it.bin) return;
+  try {
+    const r = await NS().scan.fromBin({ bin: it.path, path: it.orig });
+    it.path = r.path; it.name = r.path.split("/").pop(); delete it.bin; delete it.orig; delete it.binAt; it.hidden = 0; await dbPut("items", it);
+  } catch (e) { toast(L("bin_fail")); return; }
+  refreshAll(); toast(L("bin_restored"));
+}
+async function binPurge(id, quiet) {
+  const it = items.get(id); if (!it || !it.bin) return;
+  try { await NS().scan.purge({ path: it.path }); } catch (e) { if (!quiet) toast(L("bin_fail")); return; }
+  await dbDel("items", id); items.delete(id);
+  for (const p of pls) { const n = p.ids.length; p.ids = p.ids.filter(x => x !== id); if (p.ids.length !== n) await dbPut("pl", p); }
+  refreshAll(); if (!quiet) toast(L("bin_gone"));
+}
+function openBin() {
+  openPage(() => {
+    const bs = [...items.values()].filter(i => i.bin).sort((a, b) => (b.binAt || 0) - (a.binAt || 0));
+    const head = '<div class="note">' + esc(L("bin_hint")) + "</div>" + (bs.length ? '<div class="bar-top"><span>' + esc(L("bin_n", { n: bs.length })) + '</span><span class="chips"><button class="chip tap" data-act="binempty">' + esc(L("bin_empty")) + "</button></span></div>" : "");
+    return { title: L("set_bin"), html: bs.length ? head + bs.map(i => '<div class="row"><div class="cov">' + covInner(i) + '</div><div class="meta"><div class="t">' + esc(i.title) + '</div><div class="s">' + esc(fmtSize(i.size)) + '</div></div><button class="chip g tap" data-act="binrestore" data-id="' + i.id + '">' + esc(L("restore")) + '</button><button class="chip tap" data-act="binpurge" data-id="' + i.id + '">' + ic("trash", "s") + "</button></div>").join("") : emptyHTML("trash", L("bin_none"), "") };
+  });
+}
 function deleteSheet(id) {
   const it = items.get(id);
   openSheet(L("del_title"), b => {
-    b.appendChild(mk("div", "msg", esc(it.title) + "<br><br>" + esc(L(it.path ? "del_msg_scan" : "del_msg"))));
+    b.appendChild(mk("div", "msg", esc(it.title) + "<br><br>" + esc(L(it.path ? (allGranted ? "del_msg_bin" : "del_msg_scan") : "del_msg"))));
     const a = mk("div", "sh-actions");
     const c = mk("button", "chip tap", esc(L("cancel"))); c.onclick = closeSheet;
     const o = mk("button", "chip g tap", esc(L("del_ok"))); o.onclick = () => { closeSheet(); deleteItem(id); };
@@ -839,7 +880,7 @@ function showWelcome() {
   if ($("welcome")) return;
   const d = document.createElement("div"); d.id = "welcome";
   const item = k => '<div class="wi"><b>' + L("w_" + k + "t") + "</b><span>" + L("w_" + k + "d") + "</span></div>";
-  d.innerHTML = '<div class="wbox"><div class="wlogo">' + ic("note") + "</div><h1>Sargam</h1><p class=\"wsub\">" + L("w_sub") + "</p>" + item(1) + item(2) + item(3) +
+  d.innerHTML = '<div class="wbox"><div class="wlogo">' + ic("note") + "</div><h1>Sargam</h1><p class=\"wsub\">" + L("w_sub") + "</p>" + item(1) + item(4) + item(2) + item(3) +
     '<button class="wgo tap" id="wGo">' + L("w_go") + '</button><button class="wlang tap" id="wLang">' + (lang === "en" ? "हिन्दी" : "English") + "</button></div>";
   document.body.appendChild(d);
   $("wLang").onclick = () => { lang = lang === "en" ? "hi" : "en"; store.set("lang", lang); d.remove(); setStatic(); showWelcome(); };
@@ -847,6 +888,7 @@ function showWelcome() {
     $("wGo").disabled = true;
     const N = NS(), M = NM();
     try { if (N) { await N.scan.ask(); const a = await N.scan.has(); scanGranted = !!(a && a.granted); } } catch (e) {}
+    try { if (N && N.scan.askAll) await N.scan.askAll(); } catch (e) {}
     try { if (M) { store.set("notifAsked", true); await M.ask(); } } catch (e) {}
     try { if (M && M.battery) await M.battery(); } catch (e) {}
     store.set("welcomed", true); d.remove(); startScan();
@@ -941,7 +983,8 @@ function refreshAll() { renderTab(); pages.forEach(p => p.refresh()); }
 
 /* ================= phone scan (native, Android MediaStore) ================= */
 const NS = () => (window.SargamNative && SargamNative.isNative && SargamNative.scan ? SargamNative : null);
-let scanning = false, lastScan = 0, scanGranted = false;
+let scanning = false, lastScan = 0, scanGranted = false, allGranted = false;
+async function checkAll() { const N = NS(); if (!N || !N.scan.hasAll) return; try { const a = await N.scan.hasAll(); allGranted = !!(a && a.granted); } catch (e) { allGranted = false; } }
 function dataToBlob(u) { const h = u.split(","); const mime = h[0].match(/:(.*?);/)[1]; const bin = atob(h[1]); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type: mime }); }
 function dbBulk(adds, puts, dels) {
   return new Promise((res, rej) => {
@@ -967,7 +1010,7 @@ function applyFolderDefaults(list) {
 async function mergeScan(list) {
   applyFolderDefaults(list);
   const byPath = new Map(), haveKeys = new Set();
-  for (const it of items.values()) { if (it.path) byPath.set(it.path, it); else haveKeys.add(it.key); }
+  for (const it of items.values()) { if (it.bin) continue; if (it.path) byPath.set(it.path, it); else haveKeys.add(it.key); }
   const adds = [], puts = [], seen = new Set(), kinds = new Set(list.map(x => x.kind === "v" ? "v" : "a"));
   for (const s of list) {
     if (!s.path) continue; seen.add(s.path);
@@ -997,7 +1040,7 @@ async function nativeScan(manual) {
   try {
     let acc = await N.scan.has();
     if (!acc.granted && manual) acc = await N.scan.ask();
-    scanGranted = !!acc.granted;
+    scanGranted = !!acc.granted; await checkAll();
     if (!scanGranted) { if (manual) toast(L("scan_denied")); scanning = false; renderTab(); return; }
     if (manual) busy(true, L("scan_busy"), 40);
     const r = await N.scan.run();
@@ -1013,7 +1056,7 @@ async function pumpThumbs() {
   while (thumbRun < 2 && thumbQ.length) {
     thumbRun++; const it = thumbQ.shift();
     (async () => {
-      try { const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 220 }); it.thumb = r && r.data ? r.data : null; } catch (e) { it.thumb = null; }
+      try { const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 220, path: it.path }); it.thumb = r && r.data ? r.data : null; } catch (e) { it.thumb = null; }
       delete it.thumbBusy; dbPut("items", it).catch(() => {});
       document.querySelectorAll('.row[data-id="' + it.id + '"] .cov').forEach(c => { c.innerHTML = covInner(it) + (it.kind === "v" ? '<i class="vtag">' + ic("video") + "</i>" : ""); });
       thumbRun--; pumpThumbs();
@@ -1033,7 +1076,7 @@ const artBusy = new Set();
 async function scanArt(it) {
   if (it.blob || it.art !== undefined || artBusy.has(it.id) || !NS()) return; artBusy.add(it.id);
   try {
-    const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 900 });
+    const r = await NS().scan.thumb({ id: it.mid, kind: it.kind, size: 900, path: it.path });
     if (r && r.data) { it.art = dataToBlob(r.data); if (!it.thumb) it.thumb = await shrink(it.art, 240); } else it.art = null;
     await dbPut("items", it);
   } catch (e) {}
@@ -1055,7 +1098,7 @@ async function localLyrics(it) {
 }
 async function startScan() {
   const N = NS(); if (!N) return;
-  try { const a = await N.scan.has(); scanGranted = !!a.granted; if (scanGranted) nativeScan(false); else renderTab(); } catch (e) {}
+  try { const a = await N.scan.has(); scanGranted = !!a.granted; await checkAll(); if (scanGranted) nativeScan(false); else renderTab(); } catch (e) {}
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && NS() && scanGranted && Date.now() - lastScan > 30000) nativeScan(false); });
 
@@ -1153,6 +1196,11 @@ function onAct(el) {
     case "hidden": openHidden(); break;
     case "backup": openBackup(); break;
     case "about": openSheet(L("set_about"), b => { b.appendChild(mk("div", "msg", esc(L("about_text")) + '<br><br><b style="color:var(--g);font-size:17px">' + esc(L("created_by")) + "</b><br>" + esc(L("version")))); }); break;
+    case "allfiles": (async () => { try { const N = NS(); if (N && N.scan.askAll) await N.scan.askAll(); } catch (e) {} await checkAll(); refreshAll(); if (allGranted) nativeScan(false); })(); break;
+    case "bin": openBin(); break;
+    case "binrestore": binRestore(+el.dataset.id); break;
+    case "binpurge": confirmSheet(L("purge_t"), L("purge_msg"), () => binPurge(+el.dataset.id)); break;
+    case "binempty": confirmSheet(L("purge_t"), L("purge_all_msg"), async () => { for (const i of [...items.values()].filter(x => x.bin)) await binPurge(i.id, true); toast(L("bin_gone")); }); break;
     case "unhide": unhideItem(+el.dataset.id); break;
     case "eqon": eq.on = !eq.on; eqApply(); refreshAll(); if ($("sheetTitle").dataset.k === "eq") eqSheet(); break;
     case "eqpre": eq.preset = el.dataset.v; eq.g = PRESETS[eq.preset].slice(); eq.bass = eq.preset === "bass" ? 8 : 0; eq.on = true; eqApply(); refreshAll(); if ($("sheetTitle").dataset.k === "eq") eqSheet(); break;
