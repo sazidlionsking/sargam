@@ -195,3 +195,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .cov{position:relative}
 .vtag{position:absolute;right:3px;bottom:3px;width:19px;height:19px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--g);display:grid;place-items:center}
 .vtag .ic{width:12px;height:12px}
+
+#welcome{position:fixed;inset:0;z-index:200;background:radial-gradient(120% 70% at 50% 0%,#0f2a1c,#07090a 60%);display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+#welcome .wbox{width:100%;max-width:420px;text-align:center}
+#welcome .wlogo{width:84px;height:84px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;color:var(--g);background:var(--glass);border:1px solid var(--gb);box-shadow:0 0 40px rgba(34,224,122,.25)}
+#welcome .wlogo svg{width:40px;height:40px}
+#welcome h1{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg,#fff,var(--g));-webkit-background-clip:text;background-clip:text;color:transparent}
+#welcome .wsub{color:var(--mu);margin:6px 0 22px}
+#welcome .wi{text-align:left;background:var(--glass);border:1px solid var(--gb);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+#welcome .wi b{display:block;color:var(--g);margin-bottom:3px}
+#welcome .wi span{color:var(--tx);font-size:14px;opacity:.85}
+#welcome .wgo{width:100%;margin-top:14px;padding:14px;border:0;border-radius:16px;font-size:16px;font-weight:700;color:#04150c;background:linear-gradient(135deg,var(--g),var(--g2));box-shadow:0 0 24px rgba(34,224,122,.35)}
+#welcome .wgo:disabled{opacity:.6}
+#welcome .wlang{margin-top:12px;background:none;border:0;color:var(--mu);font-size:14px;padding:8px}

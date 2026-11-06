@@ -117,6 +117,7 @@ window.addEventListener("popstate", () => {
 });
 if (NATIVE) {
   SargamNative.onBack(() => {
+    if (document.getElementById("welcome")) return;
     if (layers.length) { history.back(); return; }
     if (tab !== "songs") { setTab("songs"); return; }
     if (exitArmed) { SargamNative.exit(!!curItem() && !activeEl().paused); return; }
@@ -800,8 +801,38 @@ if (NM()) {
     else if (c.a === "stop") stopPlayback();
   });
 }
-// leaving the app while a video plays: carry on as audio (the browser would pause the picture)
-document.addEventListener("visibilitychange", () => { if (document.hidden && mode === "video" && curItem() && !vid.paused) setMode("audio"); });
+
+// leaving the app while a video file plays: carry on as audio. The browser pauses a file that was
+// opened while the app was visible, but plays one that is opened once the app is in the background.
+function reopenAudio() {
+  const el = aud, t = el.currentTime; el.pause(); el.removeAttribute("src"); try { el.load(); } catch (e) {}
+  el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
+  el.addEventListener("loadedmetadata", function f() { el.removeEventListener("loadedmetadata", f); try { el.currentTime = t; } catch (e) {} playEl(el); });
+}
+document.addEventListener("visibilitychange", () => {
+  const it = curItem(); if (!document.hidden || !it || it.kind !== "v") return;
+  if (mode === "video" && !vid.paused) setMode("audio");
+  else if (mode === "audio" && !aud.paused) reopenAudio();
+});
+
+/* ================= first-run welcome (asks every permission once) ================= */
+function showWelcome() {
+  if ($("welcome")) return;
+  const d = document.createElement("div"); d.id = "welcome";
+  const item = k => '<div class="wi"><b>' + L("w_" + k + "t") + "</b><span>" + L("w_" + k + "d") + "</span></div>";
+  d.innerHTML = '<div class="wbox"><div class="wlogo">' + ic("note") + "</div><h1>Sargam</h1><p class=\"wsub\">" + L("w_sub") + "</p>" + item(1) + item(2) + item(3) +
+    '<button class="wgo tap" id="wGo">' + L("w_go") + '</button><button class="wlang tap" id="wLang">' + (lang === "en" ? "हिन्दी" : "English") + "</button></div>";
+  document.body.appendChild(d);
+  $("wLang").onclick = () => { lang = lang === "en" ? "hi" : "en"; store.set("lang", lang); d.remove(); setStatic(); showWelcome(); };
+  $("wGo").onclick = async () => {
+    $("wGo").disabled = true;
+    const N = NS(), M = NM();
+    try { if (N) { await N.scan.ask(); const a = await N.scan.has(); scanGranted = !!(a && a.granted); } } catch (e) {}
+    try { if (M) { store.set("notifAsked", true); await M.ask(); } } catch (e) {}
+    try { if (M && M.battery) await M.battery(); } catch (e) {}
+    store.set("welcomed", true); d.remove(); startScan();
+  };
+}
 
 /* ================= player UI ================= */
 function buildFull() {
@@ -1169,7 +1200,7 @@ function wire() {
     for (const it of await dbAll("items")) items.set(it.id, it);
     pls = await dbAll("pl");
   } catch (e) { toast("Storage error"); }
-  setStatic(); renderTab(); setTimeout(upgradeAll, 1500); startScan();
+  setStatic(); renderTab(); setTimeout(upgradeAll, 1500); if (NS() && !store.get("welcomed", false)) showWelcome(); else startScan();
   try { let t; new MutationObserver(() => { clearTimeout(t); t = setTimeout(observeThumbs, 80); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
   if (eq.on) { /* graph is built on first play */ }
 })();

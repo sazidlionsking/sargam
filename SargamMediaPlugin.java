@@ -1,6 +1,12 @@
 package com.sajid.sargam;
 
+import android.content.Intent;
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.net.Uri;
+import android.os.PowerManager;
+import android.provider.Settings;
+import androidx.activity.result.ActivityResult;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.util.Base64;
@@ -10,6 +16,7 @@ import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -76,6 +83,26 @@ public class SargamMediaPlugin extends Plugin {
     @PermissionCallback
     private void notifDone(PluginCall call) {
         call.resolve();
+    }
+
+    @PluginMethod
+    public void battery(PluginCall call) {
+        try {
+            String pkg = getContext().getPackageName();
+            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            if (Build.VERSION.SDK_INT >= 23 && pm != null && !pm.isIgnoringBatteryOptimizations(pkg)) {
+                Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                i.setData(Uri.parse("package:" + pkg));
+                startActivityForResult(call, i, "batteryDone");
+                return;
+            }
+        } catch (Exception e) { /* fall through */ }
+        call.resolve();
+    }
+
+    @ActivityCallback
+    private void batteryDone(PluginCall call, ActivityResult result) {
+        if (call != null) call.resolve();
     }
 
     @Override

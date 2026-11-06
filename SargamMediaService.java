@@ -136,7 +136,7 @@ public class SargamMediaService extends Service {
                 .setContentTitle(title).setContentText(artist)
                 .setSubText(album != null && album.length() > 0 ? album : null)
                 .setLargeIcon(art)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setVisibility(Notification.VISIBILITY_PUBLIC).setCategory(Notification.CATEGORY_TRANSPORT)
                 .setShowWhen(false).setOngoing(true).setOnlyAlertOnce(true)
                 .addAction(android.R.drawable.ic_media_previous, "Previous", act(A_PREV, 1))
                 .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, playing ? "Pause" : "Play", act(playing ? A_PAUSE : A_PLAY, 2))

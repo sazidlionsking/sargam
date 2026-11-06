@@ -26,7 +26,8 @@ window.SargamNative = {
   media: native ? {
     update: o => quiet(Media.update(o)),
     stop: () => quiet(Media.stop()),
-    ask: () => quiet(Media.askNotif()),
+    ask: () => Media.askNotif().catch(() => {}),
+    battery: () => Media.battery().catch(() => {}),
     onCmd(cb) { quiet(Media.addListener("cmd", e => cb(e || {}))); }
   } : null,
   fileSrc(path) { return location.origin + "/_capacitor_file_" + String(path).split("/").map(encodeURIComponent).join("/"); }
