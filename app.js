@@ -85,7 +85,16 @@ if (!TABS.includes(tab)) tab = "songs";
 const byTitle = (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
 let offFolders = new Set(store.get("off", []));
 const showable = i => !i.hidden && !(i.folder != null && offFolders.has(i.folder));
-const vis = kind => [...items.values()].filter(i => showable(i) && (!kind || i.kind === kind)).sort(byTitle);
+let sortO = store.get("sort", { k: "name", d: 1 });
+const sorter = () => {
+  const k = sortO.k, d = sortO.d;
+  if (k === "size") return (a, b) => d * ((a.size || (a.blob ? a.blob.size : 0)) - (b.size || (b.blob ? b.blob.size : 0)) || byTitle(a, b));
+  if (k === "added") return (a, b) => d * ((a.added || 0) - (b.added || 0) || byTitle(a, b));
+  if (k === "dur") return (a, b) => d * ((a.dur || 0) - (b.dur || 0) || byTitle(a, b));
+  return (a, b) => d * byTitle(a, b);
+};
+const vis = kind => [...items.values()].filter(i => showable(i) && (!kind || i.kind === kind)).sort(sorter());
+const fmtSize = b => { b = b || 0; return b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : b >= 1048576 ? Math.round(b / 1048576) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB"; };
 const isVis = id => { const i = items.get(id); return !!i && showable(i); };
 
 /* ================= toast / busy ================= */
@@ -178,7 +187,7 @@ function openPage(render) {
 /* ================= list rendering ================= */
 let ctxSeq = 0; const ctxs = {};
 function covInner(it) { return it.thumb ? '<img alt="" src="' + it.thumb + '">' : ic(it.kind === "v" ? "video" : "note"); }
-const sub = it => (it.artist || L("unknown")) + (it.dur ? " · " + fmt(it.dur) : "");
+const sub = it => (it.artist || L("unknown")) + (it.dur ? " · " + fmt(it.dur) : "") + (sortO.k === "size" ? " · " + fmtSize(it.size || (it.blob ? it.blob.size : 0)) : "");
 function rowHTML(it, i, o) {
   return '<div class="row tap' + (curId === it.id ? " now" : "") + '" data-id="' + it.id + '" data-i="' + i + '">' +
     '<div class="cov">' + covInner(it) + (it.kind === "v" ? '<i class="vtag">' + ic("video") + "</i>" : "") + '</div><div class="meta"><div class="t">' + esc(it.title) + '</div><div class="s">' + esc(sub(it)) + "</div></div>" +
@@ -207,16 +216,16 @@ function renderTab() {
   const v = $("view"); const st = v.scrollTop; let h = "";
   if (tab === "songs") {
     const ids = vis(chip === "a" || chip === "v" ? chip : null).map(i => i.id); tabIds = ids;
-    const chips = '<div class="chips" style="padding:2px 6px 8px">' + [["all", "chip_all"], ["a", "chip_songs"], ["v", "tab_videos"]].map(([k, l]) => '<button class="chip tap' + (chip === k ? " on" : "") + '" data-chip="' + k + '">' + esc(L(l)) + "</button>").join("") + "</div>";
+    const chips = '<div class="chips" style="padding:2px 6px 8px">' + [["all", "chip_all"], ["a", "chip_songs"], ["v", "tab_videos"]].map(([k, l]) => '<button class="chip tap' + (chip === k ? " on" : "") + '" data-chip="' + k + '">' + esc(L(l)) + "</button>").join("") + '<button class="chip tap" data-act="sort" style="margin-left:auto">' + ic("swap", "s") + esc(L("sort_" + sortO.k)) + (sortO.d > 0 ? " ↑" : " ↓") + "</button></div>";
     const ban = NS() && !scanGranted ? srowH("scan", "search", L("scan_title"), "") : "";
     if (!ids.length) h = ban + chips + emptyHTML(chip === "v" ? "video" : "note", L(chip === "v" ? "empty_videos" : "empty_songs"), L("empty_hint"), '<div style="margin-top:18px"><button class="chip g tap" data-act="add">' + ic("add", "s") + esc(L("add_files")) + "</button></div>");
     else h = ban + chips + trackBar(ids.length, chip === "v" ? "videos_n" : chip === "a" ? "songs_n" : "items_n") + listHTML(ids);
   } else if (tab === "folders") {
-    const g = new Map(); let imp = 0;
-    for (const it of items.values()) { if (it.hidden) continue; if (it.folder == null) { imp++; continue; } g.set(it.folder, (g.get(it.folder) || 0) + 1); }
+    const g = new Map(), gs = new Map(); let imp = 0, nFiles = 0;
+    for (const it of items.values()) { if (it.hidden) continue; if (it.folder == null) { imp++; continue; } nFiles++; g.set(it.folder, (g.get(it.folder) || 0) + 1); gs.set(it.folder, (gs.get(it.folder) || 0) + (it.size || 0)); }
     const rows = [...g.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }));
-    h = rows.length ? '<div class="note">' + esc(L("folders_hint")) + "</div>" : "";
-    h += rows.map(([f, n]) => { const nm = f.split("/").filter(Boolean).slice(-2).join(" / ") || "/"; return '<div class="row tap" data-act="folder" data-v="' + encodeURIComponent(f) + '"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(nm) + '</div><div class="s">' + esc(f || "/") + " · " + esc(L("items_n", { n })) + '</div></div><span class="sw' + (offFolders.has(f) ? "" : " on") + '" data-act="foff" data-v="' + encodeURIComponent(f) + '"></span></div>'; }).join("");
+    h = rows.length ? '<div class="note">' + esc(L("folders_sum", { n: nFiles, f: rows.length, o: rows.filter(r => offFolders.has(r[0])).length })) + "<br>" + esc(L("folders_hint")) + "<br>" + esc(L("folders_sug")) + "</div>" : "";
+    h += rows.map(([f, n]) => { const nm = f.split("/").filter(Boolean).slice(-2).join(" / ") || "/"; return '<div class="row tap" data-act="folder" data-v="' + encodeURIComponent(f) + '"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(nm) + '</div><div class="s">' + esc(f || "/") + " · " + esc(L("items_n", { n })) + " · " + esc(fmtSize(gs.get(f))) + '</div></div><span class="sw' + (offFolders.has(f) ? "" : " on") + '" data-act="foff" data-v="' + encodeURIComponent(f) + '"></span></div>'; }).join("");
     if (imp) h += '<div class="row tap" data-act="folder" data-v="__imp"><div class="cov">' + ic("folder") + '</div><div class="meta"><div class="t">' + esc(L("folder_imported")) + '</div><div class="s">' + esc(L("items_n", { n: imp })) + "</div></div></div>";
     if (!rows.length && !imp) h = emptyHTML("folder", L("folders_empty"), L("scan_hint"), NS() ? '<div style="margin-top:18px"><button class="chip g tap" data-act="scan">' + ic("search", "s") + esc(L("scan_now")) + "</button></div>" : "");
   } else if (tab === "artists") {
@@ -946,9 +955,17 @@ function scanItem(s, key) {
   const np = nameParts(s.name || ""), base = baseOf(s.name || "");
   let title = s.title, artist = s.artist || "";
   if (!title || baseOf(title) === base || /^\d+$/.test(title)) { title = np.title || base; if (!artist) artist = np.artist; }
-  return { kind: s.kind === "v" ? "v" : "a", title, artist, album: s.album || "", dur: s.dur || 0, path: s.path, mid: s.id, folder: s.folder || "", size: s.size || 0, name: s.name || "", lyrics: "", base, key, hidden: 0, fav: 0, added: Date.now(), tagsDone: 1 };
+  return { kind: s.kind === "v" ? "v" : "a", title, artist, album: s.album || "", dur: s.dur || 0, path: s.path, mid: s.id, folder: s.folder || "", size: s.size || 0, name: s.name || "", lyrics: "", base, key, hidden: 0, fav: 0, added: s.added ? s.added * 1000 : Date.now(), tagsDone: 1 };
+}
+function applyFolderDefaults(list) {
+  const known = new Set(store.get("kf", [])), tot = new Map(), sg = new Map();
+  for (const s of list) { const f = s.folder || ""; tot.set(f, (tot.get(f) || 0) + 1); if (s.sug) sg.set(f, (sg.get(f) || 0) + 1); }
+  let ch = false;
+  for (const [f, n] of tot) { if (known.has(f)) continue; known.add(f); ch = true; if ((sg.get(f) || 0) * 2 > n) offFolders.add(f); }
+  if (ch) { store.set("kf", [...known]); store.set("off", [...offFolders]); }
 }
 async function mergeScan(list) {
+  applyFolderDefaults(list);
   const byPath = new Map(), haveKeys = new Set();
   for (const it of items.values()) { if (it.path) byPath.set(it.path, it); else haveKeys.add(it.key); }
   const adds = [], puts = [], seen = new Set(), kinds = new Set(list.map(x => x.kind === "v" ? "v" : "a"));
@@ -1112,6 +1129,10 @@ function onAct(el) {
     case "scan": nativeScan(true); break;
     case "folder": { const f = decodeURIComponent(el.dataset.v); const own = f === "__imp" ? (i => i.folder == null) : (i => i.folder === f);
       songsPage(() => (f === "__imp" ? L("folder_imported") : f.split("/").filter(Boolean).slice(-1)[0] || "/"), () => [...items.values()].filter(i => !i.hidden && own(i)).sort(byTitle).map(i => i.id), { raw: true, emptyT: L("empty_songs") }); break; }
+    case "sort": openSheet(L("sort_t"), b => {
+      [["name", "sort_name"], ["size", "sort_size"], ["added", "sort_added"], ["dur", "sort_dur"]].forEach(([k, l]) => srow(b, "swap", L(l), () => { sortO = { k, d: sortO.k === k ? -sortO.d : (k === "name" ? 1 : -1) }; store.set("sort", sortO); closeSheet(); refreshAll(); }, { check: sortO.k === k }));
+      srow(b, "swap", sortO.d > 0 ? L("sort_asc") : L("sort_desc"), () => { sortO = { k: sortO.k, d: -sortO.d }; store.set("sort", sortO); closeSheet(); refreshAll(); });
+    }); break;
     case "foff": { const f = decodeURIComponent(el.dataset.v); if (offFolders.has(f)) offFolders.delete(f); else offFolders.add(f); store.set("off", [...offFolders]); refreshAll(); break; }
     case "tplay": playQueue(tabIds, 0); break;
     case "tshuf": playQueue(tabIds, 0, true); break;

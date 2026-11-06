@@ -142,18 +142,19 @@ public class SargamScanPlugin extends Plugin {
         cols.add(MediaStore.Audio.Media.IS_RINGTONE);
         cols.add(MediaStore.Audio.Media.IS_ALARM);
         cols.add(MediaStore.Audio.Media.IS_NOTIFICATION);
+        cols.add("date_added");
         if (Build.VERSION.SDK_INT >= 29) cols.add("relative_path");
         if (Build.VERSION.SDK_INT >= 31) cols.add("is_recording");
         Cursor c = cr.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cols.toArray(new String[0]), null, null, null);
         if (c == null) return;
         try {
             while (c.moveToNext()) {
-                if (lng(c, "is_ringtone") != 0 || lng(c, "is_alarm") != 0 || lng(c, "is_notification") != 0 || lng(c, "is_recording") != 0) continue;
                 String path = str(c, "_data");
                 if (path.length() == 0) continue;
                 String name = str(c, "_display_name");
                 String folder = folderOf(c);
-                if (ScanFilter.isExcluded(folder, name, str(c, "mime_type"))) continue;
+                boolean sug = lng(c, "is_ringtone") != 0 || lng(c, "is_alarm") != 0 || lng(c, "is_notification") != 0 || lng(c, "is_recording") != 0
+                    || ScanFilter.isExcluded(folder, name, str(c, "mime_type"));
                 String artist = str(c, "artist");
                 if (artist.equals("<unknown>")) artist = "";
                 String album = str(c, "album");
@@ -169,6 +170,8 @@ public class SargamScanPlugin extends Plugin {
                 o.put("size", lng(c, "_size"));
                 o.put("path", path);
                 o.put("folder", folder);
+                o.put("sug", sug);
+                o.put("added", lng(c, "date_added"));
                 arr.put(o);
             }
         } finally {
@@ -185,6 +188,7 @@ public class SargamScanPlugin extends Plugin {
         cols.add(MediaStore.Video.Media.DURATION);
         cols.add(MediaStore.Video.Media.DISPLAY_NAME);
         cols.add(MediaStore.Video.Media.SIZE);
+        cols.add("date_added");
         cols.add(MediaStore.Video.Media.MIME_TYPE);
         cols.add(MediaStore.Video.Media.DATA);
         if (Build.VERSION.SDK_INT >= 29) cols.add("relative_path");
@@ -196,7 +200,7 @@ public class SargamScanPlugin extends Plugin {
                 if (path.length() == 0) continue;
                 String name = str(c, "_display_name");
                 String folder = folderOf(c);
-                if (ScanFilter.isExcluded(folder, name, "")) continue;
+                boolean sug = ScanFilter.isExcluded(folder, name, "");
                 String artist = str(c, "artist");
                 if (artist.equals("<unknown>")) artist = "";
                 JSObject o = new JSObject();
@@ -210,6 +214,8 @@ public class SargamScanPlugin extends Plugin {
                 o.put("size", lng(c, "_size"));
                 o.put("path", path);
                 o.put("folder", folder);
+                o.put("sug", sug);
+                o.put("added", lng(c, "date_added"));
                 arr.put(o);
             }
         } finally {
