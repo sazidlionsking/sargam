@@ -250,3 +250,13 @@ body:has(#mini.show):has(.page) .page{padding-bottom:calc(var(--sB) + 88px)}
 #lsheet .lctl .lpp{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;color:#04150c;border:0;background:radial-gradient(circle at 30% 25%,#7dffb4,var(--g) 45%,var(--g2));box-shadow:0 0 18px rgba(34,224,122,.4)}
 #lsheet .lseekw{padding:0 18px 6px}
 #lsheet .lhd{padding-top:6px}
+
+/* lyrics: the line being sung fills with green as it is sung */
+@property --w{syntax:"<percentage>";inherits:false;initial-value:0%}
+@keyframes lpop{from{transform:translateX(-8px) scale(.97);opacity:.45}to{transform:none;opacity:1}}
+#lsheet .lbody p{transition:color .3s,opacity .3s}
+#lsheet .lbody p.past{color:rgba(255,255,255,.62)}
+#lsheet .lbody:not(.plain) p.on{--w:0%;color:transparent;-webkit-text-fill-color:transparent;text-shadow:none;
+  background:linear-gradient(90deg,var(--g) var(--w),rgba(255,255,255,.5) var(--w));-webkit-background-clip:text;background-clip:text;
+  transition:--w .3s linear;animation:lpop .38s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 10px rgba(34,224,122,.32))}
+@media (prefers-reduced-motion:reduce){#lsheet .lbody:not(.plain) p.on{transition:none}}

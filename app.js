@@ -742,11 +742,13 @@ async function findOnline(it) {
 function syncLyrics(time) {
   if (!lyr.on || !lyr.data || !lyr.data.synced) return;
   const ls = lyr.data.lines; let k = -1; for (let i = 0; i < ls.length; i++) { if (ls[i].t <= time + 0.15) k = i; else break; }
-  if (k === lyr.idx) return; lyr.idx = k;
   const body = $("lbody"); if (!body) return;
-  body.querySelectorAll("p.on").forEach(e => e.classList.remove("on"));
+  const fill = el => { if (!el || k < 0) return; const t0 = ls[k].t, t1 = k + 1 < ls.length ? ls[k + 1].t : t0 + 5; el.style.setProperty("--w", Math.max(0, Math.min(1, (time - t0) / Math.max(0.3, t1 - t0))) * 100 + "%"); };
+  if (k === lyr.idx) { fill(body.querySelector("p.on")); return; }
+  lyr.idx = k;
+  body.querySelectorAll("p").forEach((e, i) => { e.classList.remove("on"); e.classList.toggle("past", i < k); e.style.removeProperty("--w"); });
   const el = body.querySelector('p[data-i="' + k + '"]');
-  if (el) { el.classList.add("on"); body.scrollTo({ top: el.offsetTop - body.clientHeight / 2 + el.clientHeight / 2, behavior: "smooth" }); }
+  if (el) { el.style.setProperty("--w", "0%"); el.classList.add("on"); fill(el); body.scrollTo({ top: el.offsetTop - body.clientHeight / 2 + el.clientHeight / 2, behavior: "smooth" }); }
 }
 
 /* ================= player ================= */
