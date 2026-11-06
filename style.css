@@ -239,3 +239,14 @@ body:has(#mini.show):has(.page) .page{padding-bottom:calc(var(--sB) + 88px)}
 .stp-l{color:var(--mu);font-size:13px}
 .stp-sep{font-size:38px;font-weight:700;color:var(--mu);margin-top:-18px}
 .stp-total{text-align:center;color:var(--mu);margin:8px 0 6px;font-size:14px}
+
+/* lyrics page: full screen, with song controls on top, tap anywhere to close */
+#lsheet{top:0;height:100%;border-radius:0;border-top:0;box-shadow:none;background:rgba(10,14,12,.97);padding-top:6px}
+#lsheet .lmini{gap:10px;padding:4px 14px 6px}
+#lsheet .lmini .meta{flex:1;min-width:0}
+#lsheet .lmini .t,#lsheet .lmini .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lsheet .lctl{display:flex;align-items:center;gap:6px;flex:none}
+#lsheet .lctl .cb{width:40px;height:40px}
+#lsheet .lctl .lpp{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;color:#04150c;border:0;background:radial-gradient(circle at 30% 25%,#7dffb4,var(--g) 45%,var(--g2));box-shadow:0 0 18px rgba(34,224,122,.4)}
+#lsheet .lseekw{padding:0 18px 6px}
+#lsheet .lhd{padding-top:6px}

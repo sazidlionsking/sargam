@@ -949,7 +949,8 @@ function buildFull() {
     '<div class="fseek"><input type="range" id="seek" min="0" max="1000" value="0"><div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div></div>' +
     '<div class="fctl"><button class="cb tap" id="cShuf">' + ic("shuffle") + '</button><button class="cb sm tap" id="cPrev">' + ic("prev") + '</button><button class="bigplay" id="cPlay"></button><button class="cb sm tap" id="cNext">' + ic("next") + '</button><button class="cb tap" id="cRep"></button></div>' +
     '<div class="fext"><button class="tap" id="xLyr">' + ic("lyrics") + '<span id="xLyrT"></span></button><button class="tap" id="xEq">' + ic("eq") + '<span id="xEqT"></span></button><button class="tap" id="xSleep">' + ic("timer") + '<span id="xSleepT"></span></button><button class="tap" id="xSpeed">' + ic("speed") + '<span id="xSpeedT"></span></button></div>' +
-    '<div id="lsheet"><button class="lgrab tap" id="lGrab">' + ic("down") + '</button><div class="lmini"><div class="cov" id="lCov"></div><div class="meta"><div class="t" id="lT"></div><div class="s" id="lS"></div></div></div>' +
+    '<div id="lsheet"><button class="lgrab tap" id="lGrab">' + ic("down") + '</button><div class="lmini"><div class="cov" id="lCov"></div><div class="meta"><div class="t" id="lT"></div><div class="s" id="lS"></div></div><div class="lctl"><button class="cb sm tap" id="lPrev">' + ic("prev") + '</button><button class="cb lpp tap" id="lPlay"></button><button class="cb sm tap" id="lNext">' + ic("next") + '</button></div></div>' +
+    '<div class="fseek lseekw"><input type="range" id="lSeek" min="0" max="1000" value="0"><div class="times"><span id="lCur">0:00</span><span id="lDur">0:00</span></div></div>' +
     '<div class="lhd"><span id="lTitle"></span><span class="lact"><button class="ib tap" id="lEdit">' + ic("edit") + '</button><button class="ib tap" id="lDel">' + ic("trash") + '</button></span></div><div class="lbody" id="lbody"></div></div>';
   $("mini").innerHTML = '<div class="cov" id="mCov"></div><div class="meta"><div class="t" id="mT"></div><div class="s" id="mS"></div></div><button class="mb tap pp" id="mPlay"></button><button class="mb tap" id="mNext">' + ic("next") + "</button>";
   vid = $("vid");
@@ -999,19 +1000,21 @@ function uiState() {
   syncMedia();
   const playing = !!curItem() && !activeEl().paused;
   $("cPlay").innerHTML = ic(playing ? "pause" : "play"); $("mPlay").innerHTML = ic(playing ? "pause" : "play");
+  const lp = $("lPlay"); if (lp) lp.innerHTML = ic(playing ? "pause" : "play");
 }
 function uiShuf() {
   $("cShuf").classList.toggle("on", shuf); $("cRep").innerHTML = ic(rep === "one" ? "repeat1" : "repeat"); $("cRep").classList.toggle("on", rep !== "off");
   $("xSpeedT").textContent = speed + "x";
 }
 function uiSleep() { const b = $("xSleep"); if (!b) return; b.classList.toggle("on", !!(sleep.end || sleep.song)); $("xSleepT").textContent = sleep.song ? L("sleep_song").split(" ").slice(-2).join(" ") : sleep.end ? Math.max(1, Math.ceil((sleep.end - Date.now()) / 60000)) + " min" : L("menu_sleep"); }
-let seeking = false;
+let seeking = false, lseeking = false;
 const setP = r => r.style.setProperty("--p", ((r.value - (+r.min || 0)) / ((+r.max || 1000) - (+r.min || 0)) * 100) + "%");
 function uiTime(force) {
   const el = activeEl(), it = curItem(); if (!it) return;
   const d = isFinite(el.duration) && el.duration > 0 ? el.duration : it.dur;
   if (!seeking) { $("seek").value = d ? Math.min(1000, (el.currentTime / d) * 1000) : 0; setP($("seek")); $("tCur").textContent = fmt(el.currentTime); }
-  if (d) $("tDur").textContent = fmt(d);
+  if (d) { $("tDur").textContent = fmt(d); $("lDur").textContent = fmt(d); }
+  if (!lseeking) { $("lSeek").value = d ? Math.min(1000, (el.currentTime / d) * 1000) : 0; setP($("lSeek")); $("lCur").textContent = fmt(el.currentTime); }
   syncLyrics(el.currentTime);
 }
 function openFull() {
@@ -1304,6 +1307,11 @@ function wire() {
   const sk = $("seek");
   sk.addEventListener("input", () => { seeking = true; setP(sk); const it = curItem(); const el = activeEl(); const d = isFinite(el.duration) && el.duration > 0 ? el.duration : (it ? it.dur : 0); $("tCur").textContent = fmt(sk.value / 1000 * d); });
   sk.addEventListener("change", () => { const it = curItem(); const el = activeEl(); const d = isFinite(el.duration) && el.duration > 0 ? el.duration : (it ? it.dur : 0); if (d) el.currentTime = sk.value / 1000 * d; seeking = false; });
+  const lsk = $("lSeek"), dOf = () => { const it = curItem(), el = activeEl(); return isFinite(el.duration) && el.duration > 0 ? el.duration : (it ? it.dur : 0); };
+  lsk.addEventListener("input", () => { lseeking = true; setP(lsk); $("lCur").textContent = fmt(lsk.value / 1000 * dOf()); });
+  lsk.addEventListener("change", () => { const d = dOf(); if (d) activeEl().currentTime = lsk.value / 1000 * d; lseeking = false; });
+  $("lPrev").onclick = () => prev(); $("lNext").onclick = () => next(false); $("lPlay").onclick = () => togglePlay();
+  $("lsheet").addEventListener("click", e => { if (e.target.closest("button, input, a, .chip, .ib, .lseekw, .lctl")) return; if (lyr.on) history.back(); });
   $("fileIn").onchange = e => { const f = e.target.files; if (f && f.length) importFiles(f); e.target.value = ""; };
   $("lrcIn").onchange = async e => {
     const f = e.target.files && e.target.files[0]; const it = items.get(lrcTarget != null ? lrcTarget : curId); if (!f || !it) return;
