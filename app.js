@@ -119,7 +119,7 @@ if (NATIVE) {
   SargamNative.onBack(() => {
     if (layers.length) { history.back(); return; }
     if (tab !== "songs") { setTab("songs"); return; }
-    if (exitArmed) { SargamNative.exit(); return; }
+    if (exitArmed) { SargamNative.exit(!!curItem() && !activeEl().paused); return; }
     exitArmed = true; toast(L("t_exit")); setTimeout(() => { exitArmed = false; }, 2200);
   });
 } else { try { history.replaceState({ root: 1 }, ""); history.pushState({ s: 1 }, ""); } catch (e) {} }
@@ -680,7 +680,7 @@ function playQueue(ids, i, forceShuffle) {
   orig = ids.slice(); let start = ids[Math.min(i, ids.length - 1)];
   if (forceShuffle) { shuf = true; store.set("shuf", true); start = ids[Math.floor(Math.random() * ids.length)]; }
   if (shuf) { queue = shuffled(ids, start); qi = 0; } else { queue = ids.slice(); qi = queue.indexOf(start); }
-  errCount = 0; load(true); uiShuf();
+  errCount = 0; load(true); uiShuf(); askNotifOnce();
 }
 function load(auto) {
   const it = items.get(queue[qi]); if (!it) return;
@@ -721,7 +721,7 @@ function stopPlayback() {
   if (url) { URL.revokeObjectURL(url); url = null; }
   curId = null; if ($("full").classList.contains("open")) history.back(); uiTrack();
 }
-function setSpeed(v) { speed = v; store.set("speed", v); for (const e of [aud, vid]) { e.defaultPlaybackRate = v; e.playbackRate = v; } toast(v + "x"); }
+function setSpeed(v) { speed = v; store.set("speed", v); for (const e of [aud, vid]) { e.defaultPlaybackRate = v; e.playbackRate = v; } toast(v + "x"); syncMedia(); }
 function toggleShuffle() {
   shuf = !shuf; store.set("shuf", shuf);
   if (queue.length && curId != null) { if (shuf) { queue = shuffled(queue, curId); qi = 0; } else { queue = orig.filter(isVis); if (!queue.includes(curId)) queue.unshift(curId); qi = queue.indexOf(curId); } }
@@ -765,6 +765,43 @@ function eqApply() {
   if (enodes) { enodes.bass.gain.value = eq.on ? eq.bass : 0; enodes.fs.forEach((f, i) => { f.gain.value = eq.on ? eq.g[i] : 0; }); if (actx.state === "suspended") actx.resume().catch(() => {}); }
   store.set("eq", eq);
 }
+
+
+/* ================= background playback + notification (native) ================= */
+const NM = () => (window.SargamNative && SargamNative.isNative && SargamNative.media ? SargamNative.media : null);
+let mediaKey = "", mediaTimer = 0;
+function askNotifOnce() { const m = NM(); if (!m || store.get("notifAsked", false)) return; store.set("notifAsked", true); m.ask(); }
+function blobB64(b) { return new Promise(r => { const f = new FileReader(); f.onload = () => r(String(f.result).split(",")[1] || ""); f.onerror = () => r(""); f.readAsDataURL(b); }); }
+function syncMedia() {
+  const m = NM(); if (!m) return;
+  clearTimeout(mediaTimer);
+  mediaTimer = setTimeout(async () => {
+    const it = curItem();
+    if (!it) { mediaKey = ""; m.stop(); return; }
+    const el = activeEl();
+    const o = { title: it.title, artist: it.artist || "", album: it.album || "", playing: !el.paused, speed: speed,
+      pos: Math.round((el.currentTime || 0) * 1000), dur: Math.round(((isFinite(el.duration) && el.duration > 0 ? el.duration : it.dur) || 0) * 1000) };
+    const key = it.id + (it.art ? "a" : it.thumb ? "t" : "n");
+    if (key !== mediaKey) {
+      mediaKey = key;
+      try { o.art = it.art ? await blobB64(it.art) : it.thumb ? String(it.thumb).split(",")[1] || "" : ""; } catch (e) { o.art = ""; }
+    }
+    if (curId === it.id) m.update(o);
+  }, 150);
+}
+if (NM()) {
+  SargamNative.media.onCmd(c => {
+    if (!curItem()) return; const el = activeEl();
+    if (c.a === "play") { if (el.paused) playEl(el); }
+    else if (c.a === "pause") el.pause();
+    else if (c.a === "next") next(false);
+    else if (c.a === "prev") prev();
+    else if (c.a === "seek") { try { el.currentTime = (c.pos || 0) / 1000; } catch (e) {} syncMedia(); }
+    else if (c.a === "stop") stopPlayback();
+  });
+}
+// leaving the app while a video plays: carry on as audio (the browser would pause the picture)
+document.addEventListener("visibilitychange", () => { if (document.hidden && mode === "video" && curItem() && !vid.paused) setMode("audio"); });
 
 /* ================= player UI ================= */
 function buildFull() {
@@ -814,7 +851,7 @@ function uiTrack() {
   const big = artUrl || it.thumb;
   $("fCover").innerHTML = big ? '<img alt="" src="' + big + '">' : ic(it.kind === "v" ? "video" : "note");
   $("fbg").style.backgroundImage = it.thumb ? "url(" + it.thumb + ")" : "none";
-  if (!it.blob && it.art === undefined) scanArt(it).then(() => { if (curId === it.id && it.art) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = URL.createObjectURL(it.art); $("fCover").innerHTML = '<img alt="" src="' + artUrl + '">'; $("fbg").style.backgroundImage = 'url("' + artUrl + '")'; } });
+  if (!it.blob && it.art === undefined) scanArt(it).then(() => { if (curId === it.id && it.art) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = URL.createObjectURL(it.art); $("fCover").innerHTML = '<img alt="" src="' + artUrl + '">'; $("fbg").style.backgroundImage = 'url("' + artUrl + '")'; syncMedia(); } });
   $("fArt").classList.toggle("m-video", it.kind === "v" && mode === "video");
   const vb = $("fVid"); vb.classList.toggle("hide", it.kind !== "v"); vb.classList.toggle("on", mode === "video"); vb.innerHTML = ic(mode === "video" ? "headset" : "video");
   $("tDur").textContent = fmt(it.dur); uiHeart(); uiState(); uiShuf(); uiSleep(); uiTime(true);
@@ -822,6 +859,7 @@ function uiTrack() {
 }
 function uiHeart() { const it = curItem(); const b = $("fHeart"); if (!b) return; b.innerHTML = ic(it && it.fav ? "heart" : "heartO"); b.classList.toggle("on", !!(it && it.fav)); }
 function uiState() {
+  syncMedia();
   const playing = !!curItem() && !activeEl().paused;
   $("cPlay").innerHTML = ic(playing ? "pause" : "play"); $("mPlay").innerHTML = ic(playing ? "pause" : "play");
 }
@@ -1087,7 +1125,8 @@ function wire() {
     el.addEventListener("play", () => { if (el === activeEl()) uiState(); });
     el.addEventListener("pause", () => { if (el === activeEl()) uiState(); });
     el.addEventListener("playing", () => { errCount = 0; if (el === activeEl()) uiState(); });
-    el.addEventListener("loadedmetadata", () => { if (el === activeEl()) uiTime(); });
+    el.addEventListener("loadedmetadata", () => { if (el === activeEl()) { uiTime(); syncMedia(); } });
+    el.addEventListener("seeked", () => { if (el === activeEl()) syncMedia(); });
     el.addEventListener("ended", () => { if (el === activeEl()) onEnded(); });
     el.addEventListener("error", () => { if (el === activeEl() && el.getAttribute("src")) trackError(); });
   }
