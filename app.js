@@ -243,7 +243,10 @@ function renderTab() {
   }
   v.innerHTML = h; v.scrollTop = st;
 }
-function setTab(t) { tab = t; store.set("tab", t); drawNav(); renderTab(); $("view").scrollTop = 0; }
+function setTab(t, dir) {
+  tab = t; store.set("tab", t); drawNav(); renderTab(); $("view").scrollTop = 0;
+  if (dir) { try { $("view").animate([{ transform: "translateX(" + dir * 44 + "px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" }); } catch (e) {} }
+}
 function drawNav() {
   $("nav").innerHTML = TABS.map(t => '<button class="tap' + (t === tab ? " on" : "") + '" data-tab="' + t + '">' + ic(TABIC[t]) + "<span>" + esc(L("tab_" + t)) + "</span></button>").join("");
 }
@@ -379,11 +382,29 @@ function sleepSheet() {
 }
 function sleepCustom() {
   openSheet(L("sleep_custom"), b => {
-    const inp = mk("input", "field"); inp.type = "number"; inp.min = 1; inp.max = 600; inp.inputMode = "numeric"; inp.placeholder = L("sleep_custom_hint"); b.appendChild(inp);
+    const st = { h: 0, m: 30 }, max = { h: 10, m: 59 };
+    const wrap = mk("div", "stp"); const vals = {};
+    const total = mk("div", "stp-total"), upd = () => {
+      vals.h.textContent = st.h; vals.m.textContent = String(st.m).padStart(2, "0");
+      const mins = st.h * 60 + st.m; total.textContent = mins ? L("sleep_total", { t: (st.h ? st.h + " h " : "") + (st.m ? st.m + " min" : "") }) : L("sleep_zero");
+    };
+    const step = (k, d) => { const v = st[k] + d; st[k] = Math.max(0, Math.min(max[k], v)); upd(); };
+    const col = (k, label) => {
+      const c = mk("div", "stp-col"); const up = mk("button", "stp-b tap", ic("up")), val = mk("div", "stp-v", ""), dn = mk("button", "stp-b tap", ic("down"));
+      vals[k] = val;
+      const hold = (btn, d) => { let t = null, r = null; const stop = () => { clearTimeout(t); clearInterval(r); }; btn.addEventListener("touchstart", e => { e.preventDefault(); step(k, d); t = setTimeout(() => { r = setInterval(() => step(k, d), 110); }, 380); }, { passive: false }); ["touchend", "touchcancel"].forEach(ev => btn.addEventListener(ev, stop)); btn.addEventListener("click", e => { if (e.detail === 0 || !("ontouchstart" in window)) step(k, d); }); };
+      hold(up, 1); hold(dn, -1);
+      let y0 = null, acc = 0;
+      val.addEventListener("touchstart", e => { y0 = e.touches[0].clientY; acc = 0; }, { passive: true });
+      val.addEventListener("touchmove", e => { if (y0 == null) return; const y = e.touches[0].clientY; acc += y0 - y; y0 = y; while (acc >= 22) { step(k, 1); acc -= 22; } while (acc <= -22) { step(k, -1); acc += 22; } e.preventDefault(); }, { passive: false });
+      val.addEventListener("touchend", () => { y0 = null; });
+      c.appendChild(up); c.appendChild(val); c.appendChild(dn); c.appendChild(mk("div", "stp-l", esc(label))); return c;
+    };
+    wrap.appendChild(col("h", L("sleep_hr"))); wrap.appendChild(mk("div", "stp-sep", ":")); wrap.appendChild(col("m", L("sleep_mn")));
+    b.appendChild(wrap); b.appendChild(total); upd();
     const a = mk("div", "sh-actions"); const o = mk("button", "chip g tap", esc(L("sleep_start")));
-    o.onclick = () => { const n = Math.round(+inp.value); if (!(n >= 1 && n <= 600)) { toast(L("sleep_bad")); return; } setSleep(n); closeSheet(); };
-    inp.addEventListener("keydown", e => { if (e.key === "Enter") o.click(); });
-    a.appendChild(o); b.appendChild(a); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 250);
+    o.onclick = () => { const n = st.h * 60 + st.m; if (!n) { toast(L("sleep_zero")); return; } setSleep(n); closeSheet(); };
+    a.appendChild(o); b.appendChild(a);
   });
 }
 function confirmSheet(title, msg, fn) {
@@ -827,6 +848,30 @@ function eqApply() {
   store.set("eq", eq);
 }
 
+
+/* ================= swipe gestures ================= */
+function swipeable(el, onSwipe) {
+  let x0 = 0, y0 = 0, t0 = 0, on = false;
+  el.addEventListener("touchstart", e => { if (e.touches.length !== 1) { on = false; return; } const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; t0 = Date.now(); on = true; }, { passive: true });
+  el.addEventListener("touchend", e => {
+    if (!on) return; on = false; const t = e.changedTouches[0]; const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6 && Date.now() - t0 < 700) onSwipe(dx < 0 ? 1 : -1);
+  }, { passive: true });
+}
+function swipeSong(dir) {
+  if (!queue.length || curId == null) return;
+  const art = $("fArt"); let done = false;
+  const go = () => {
+    if (done) return; done = true;
+    if (dir > 0) next(false); else { qi = (qi - 1 + queue.length) % queue.length; load(true); }
+    try { art.animate([{ transform: "translateX(" + dir * 80 + "px) scale(.92)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 300, easing: "cubic-bezier(.2,.8,.2,1)" }); } catch (e) {}
+  };
+  try { const a = art.animate([{ transform: "none", opacity: 1 }, { transform: "translateX(" + (-dir * 80) + "px) scale(.92)", opacity: 0 }], { duration: 150, easing: "ease-in" }); a.onfinish = go; setTimeout(go, 220); } catch (e) { go(); }
+}
+function setupSwipes() {
+  swipeable($("view"), d => { const i = TABS.indexOf(tab) + d; if (i >= 0 && i < TABS.length) setTab(TABS[i], d); });
+  swipeable($("fArt"), swipeSong);
+}
 
 /* ================= background playback + notification (native) ================= */
 const NM = () => (window.SargamNative && SargamNative.isNative && SargamNative.media ? SargamNative.media : null);
@@ -1280,7 +1325,7 @@ function wire() {
     for (const it of await dbAll("items")) items.set(it.id, it);
     pls = await dbAll("pl");
   } catch (e) { toast("Storage error"); }
-  setStatic(); renderTab(); setTimeout(upgradeAll, 1500); if (NS() && !store.get("welcomed", false)) showWelcome(); else startScan();
+  setStatic(); renderTab(); setupSwipes(); setTimeout(upgradeAll, 1500); if (NS() && !store.get("welcomed", false)) showWelcome(); else startScan();
   try { let t; new MutationObserver(() => { clearTimeout(t); t = setTimeout(observeThumbs, 80); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
   if (eq.on) { /* graph is built on first play */ }
 })();
