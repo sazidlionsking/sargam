@@ -208,3 +208,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 #welcome .wgo{width:100%;margin-top:14px;padding:14px;border:0;border-radius:16px;font-size:16px;font-weight:700;color:#04150c;background:linear-gradient(135deg,var(--g),var(--g2));box-shadow:0 0 24px rgba(34,224,122,.35)}
 #welcome .wgo:disabled{opacity:.6}
 #welcome .wlang{margin-top:12px;background:none;border:0;color:var(--mu);font-size:14px;padding:8px}
+
+/* mini player stays visible above opened pages (playlist, album, artist, folder) */
+body:has(.page) #mini{z-index:31;bottom:calc(var(--sB) + 12px)}
+body:has(#mini.show):has(.page) .page{padding-bottom:calc(var(--sB) + 88px)}
+/* small animations */
+@keyframes miniin{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes covin{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}
+@keyframes rowin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#mini.show{animation:miniin .32s cubic-bezier(.2,.8,.2,1)}
+#nav button.on svg{animation:pop .35s ease-out}
+#fCover img{animation:covin .45s cubic-bezier(.2,.8,.2,1)}
+#fHeart.on svg{animation:pop .4s ease-out}
+.tap:active{transform:scale(.92)}
+.bigplay:active{transform:scale(.93)}
+.row{transition:background .15s,transform .12s}
+.row:active{transform:scale(.985)}
+.page .row,.page .card{animation:rowin .26s ease-out both}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

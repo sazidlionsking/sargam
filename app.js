@@ -364,7 +364,17 @@ function sleepSheet() {
   openSheet(L("sleep_title") + (sleep.end ? " · " + L("sleep_left", { t: fmt((sleep.end - Date.now()) / 1000) }) : ""), b => {
     [15, 30, 45, 60].forEach(m => srow(b, "timer", m === 60 ? L("sleep_hour") : L("sleep_min", { n: m }), () => { setSleep(m); closeSheet(); }));
     srow(b, "timer", L("sleep_song"), () => { setSleep("song"); closeSheet(); });
+    srow(b, "edit", L("sleep_custom"), () => sleepCustom());
     if (sleep.end || sleep.song) srow(b, "minus", L("sleep_off"), () => { clearSleep(); closeSheet(); });
+  });
+}
+function sleepCustom() {
+  openSheet(L("sleep_custom"), b => {
+    const inp = mk("input", "field"); inp.type = "number"; inp.min = 1; inp.max = 600; inp.inputMode = "numeric"; inp.placeholder = L("sleep_custom_hint"); b.appendChild(inp);
+    const a = mk("div", "sh-actions"); const o = mk("button", "chip g tap", esc(L("sleep_start")));
+    o.onclick = () => { const n = Math.round(+inp.value); if (!(n >= 1 && n <= 600)) { toast(L("sleep_bad")); return; } setSleep(n); closeSheet(); };
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") o.click(); });
+    a.appendChild(o); b.appendChild(a); setTimeout(() => { try { inp.focus(); } catch (e) {} }, 250);
   });
 }
 function deleteSheet(id) {
