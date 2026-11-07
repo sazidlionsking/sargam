@@ -39,5 +39,15 @@ window.SargamNative = {
     battery: () => Media.battery().catch(() => {}),
     onCmd(cb) { quiet(Media.addListener("cmd", e => cb(e || {}))); }
   } : null,
+  player: native ? {
+    load: o => quiet(Media.pLoad(o)),
+    play: () => quiet(Media.pPlay()),
+    pause: () => quiet(Media.pPause()),
+    seek: o => quiet(Media.pSeek(o)),
+    rate: o => quiet(Media.pRate(o)),
+    stop: () => quiet(Media.pStop()),
+    eq: o => Media.pEq(o),
+    onEvent(cb) { quiet(Media.addListener("pl", e => cb(e || {}))); }
+  } : null,
   fileSrc(path) { return location.origin + "/_capacitor_file_" + String(path).split("/").map(encodeURIComponent).join("/"); }
 };

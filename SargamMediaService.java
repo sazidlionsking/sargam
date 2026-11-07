@@ -100,7 +100,13 @@ public class SargamMediaService extends Service {
         return START_NOT_STICKY;
     }
 
-    private void send(String a, long p) { Cmd c = cmd; if (c != null) c.on(a, p); }
+    private void send(String a, long p) {
+        // the native player reacts at once (works even if the web page is slow in the background), then JS is told too
+        boolean handled = false;
+        try { handled = SargamPlayer.sysCmd(a, p); } catch (Throwable e) { }
+        if (handled) render();
+        Cmd c = cmd; if (c != null) c.on(a, p);
+    }
 
     private PendingIntent act(String a, int code) {
         Intent i = new Intent(this, SargamMediaService.class).setAction(a);
@@ -177,6 +183,7 @@ public class SargamMediaService extends Service {
     @Override public void onDestroy() {
         try { if (wl != null && wl.isHeld()) wl.release(); } catch (Exception e) {}
         try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception e) {}
+        try { SargamPlayer.release(); } catch (Throwable e) { }
         session = null; inst = null;
         super.onDestroy();
     }

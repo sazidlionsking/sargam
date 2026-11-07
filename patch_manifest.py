@@ -37,7 +37,7 @@ open(man, "w", encoding="utf-8").write(s)
 # plugin sources
 jd = "android/app/src/main/java/com/sajid/sargam"
 os.makedirs(jd, exist_ok=True)
-for f in ["SargamMediaPlugin.java", "SargamMediaService.java"]:
+for f in ["SargamMediaPlugin.java", "SargamMediaService.java", "SargamPlayer.java"]:
     shutil.copy(f, jd)
 
 # share file paths

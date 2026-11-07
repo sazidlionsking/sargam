@@ -782,7 +782,83 @@ let shuf = store.get("shuf", false), rep = store.get("rep", "off"), speed = stor
 const sleep = { t: null, end: 0, song: false };
 let aud, vid;
 const curItem = () => (curId != null ? items.get(curId) : null);
-const activeEl = () => { const it = curItem(); return it && it.kind === "v" && mode === "video" ? vid : aud; };
+let curNative = false, natOff = false, natBad = 0, natTok = 0;
+const PL = () => (window.SargamNative && SargamNative.isNative && SargamNative.player ? SargamNative.player : null);
+const canNative = it => !natOff && !!PL() && !it.blob && !!it.path && !it.bin;
+const activeEl = () => { if (curNative) return nat; const it = curItem(); return it && it.kind === "v" && mode === "video" ? vid : aud; };
+/* The native player looks like an <audio> element (play, pause, currentTime, events ...), so the rest of the app is unchanged. */
+const nat = {
+  _l: {}, _t: 0, _stamp: 0, _d: 0, _paused: true, _rate: 1, _src: "", _ready: false,
+  addEventListener(n, f) { (this._l[n] = this._l[n] || []).push(f); },
+  removeEventListener(n, f) { const a = this._l[n]; if (a) { const i = a.indexOf(f); if (i >= 0) a.splice(i, 1); } },
+  emit(n) { (this._l[n] || []).slice().forEach(f => { try { f({}); } catch (e) {} }); },
+  get currentTime() { if (!this._paused && this._ready) { const t = this._t + (Date.now() - this._stamp) / 1000 * this._rate; return this._d ? Math.min(t, this._d) : t; } return this._t; },
+  set currentTime(v) { v = Math.max(0, +v || 0); this._t = v; this._stamp = Date.now(); const p = PL(); if (p) p.seek({ pos: Math.round(v * 1000) }); },
+  get duration() { return this._ready && this._d ? this._d : NaN; },
+  get paused() { return this._paused; },
+  get playbackRate() { return this._rate; },
+  set playbackRate(v) { this._rate = v; const p = PL(); if (p) p.rate({ rate: v }); },
+  get defaultPlaybackRate() { return this._rate; },
+  set defaultPlaybackRate(v) {},
+  play() { this._paused = false; this._stamp = Date.now(); const p = PL(); if (p) p.play(); this.emit("play"); return Promise.resolve(); },
+  pause() { this._t = this.currentTime; this._paused = true; const p = PL(); if (p) p.pause(); this.emit("pause"); },
+  load() {},
+  getAttribute(k) { return k === "src" ? (this._src || null) : null; },
+  removeAttribute(k) { if (k === "src") { this._src = ""; this._ready = false; this._paused = true; this._t = 0; this._d = 0; const p = PL(); if (p) p.stop(); } }
+};
+function natEvent(e) {
+  if (!curNative || !e || e.tok !== natTok) return;
+  const t = (e.pos || 0) / 1000;
+  if (e.s === "ready") { nat._d = (e.dur || 0) / 1000; nat._ready = true; nat.emit("loadedmetadata"); }
+  else if (e.s === "state") {
+    const was = nat._paused; nat._paused = !e.playing; nat._t = t; nat._stamp = Date.now();
+    if (was !== nat._paused) nat.emit(nat._paused ? "pause" : "play");
+    if (e.playing) { natBad = 0; nat.emit("playing"); }
+  }
+  else if (e.s === "tick") {
+    nat._t = t; nat._stamp = Date.now();
+    if (nat._paused && e.playing) { nat._paused = false; nat.emit("play"); }
+    nat.emit("timeupdate");
+  }
+  else if (e.s === "seeked") { nat._t = t; nat._stamp = Date.now(); nat.emit("seeked"); }
+  else if (e.s === "ended") { nat._paused = true; nat._t = nat._d || t; nat.emit("ended"); }
+  else if (e.s === "error") natError();
+}
+// the native player could not play this file: carry on with the old WebView player for this song
+function natError() {
+  const it = curItem(); if (!it) return;
+  natBad++; if (natBad >= 3) natOff = true;
+  const t = nat._t, was = !nat._paused;
+  stopVid(); curNative = false; nat._ready = false; nat._paused = true;
+  const p = PL(); if (p) p.stop();
+  loadWeb(it, t, was);
+  uiTrack();
+}
+function loadWeb(it, t, auto) {
+  const el = activeEl(), other = el === aud ? vid : aud;
+  other.pause(); other.removeAttribute("src"); try { other.load(); } catch (e) {}
+  el.muted = false; el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
+  if (t > 0) el.addEventListener("loadedmetadata", function f() { el.removeEventListener("loadedmetadata", f); try { el.currentTime = t; } catch (e) {} });
+  if (auto) playEl(el);
+}
+/* video picture while the native player makes the sound: <video> is muted and follows the native clock */
+function startVid() {
+  try {
+    vid.muted = true; vid.src = url; vid.defaultPlaybackRate = speed; vid.playbackRate = speed;
+    vid.addEventListener("loadedmetadata", function f() { vid.removeEventListener("loadedmetadata", f); try { vid.currentTime = nat.currentTime; } catch (e) {} vidSync(); });
+  } catch (e) {}
+  if (eq.on || enodes) eqApply();
+}
+function stopVid() { try { vid.pause(); vid.removeAttribute("src"); vid.load(); } catch (e) {} vid.muted = false; }
+function vidSync() {
+  if (!curNative || mode !== "video" || !vid.getAttribute("src") || vid.readyState < 1 || document.hidden) return;
+  const t = nat.currentTime;
+  if (Math.abs(vid.currentTime - t) > 0.3) { try { vid.currentTime = t; } catch (e) {} }
+  if (nat.paused) { if (!vid.paused) vid.pause(); }
+  else if (vid.paused) { const p = vid.play(); if (p && p.catch) p.catch(() => {}); }
+}
+["play", "pause", "seeked", "timeupdate"].forEach(n => nat.addEventListener(n, vidSync));
+if (PL()) PL().onEvent(natEvent);
 const shuffled = (ids, first) => { const a = ids.filter(x => x !== first); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return first != null ? [first].concat(a) : a; };
 function playQueue(ids, i, forceShuffle) {
   ids = ids.filter(id => { const i = items.get(id); return !!i && !i.hidden; }); if (!ids.length) return;
@@ -795,14 +871,23 @@ function load(auto) {
   const it = items.get(queue[qi]); if (!it) return;
   curId = it.id; if (url) URL.revokeObjectURL(url); url = it.blob ? URL.createObjectURL(it.blob) : SargamNative.fileSrc(it.path);
   mode = "audio";
-  const el = activeEl(), other = el === aud ? vid : aud;
-  other.pause(); other.removeAttribute("src"); try { other.load(); } catch (e) {}
-  el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
-  if (auto) playEl(el);
+  const wasNative = curNative;
+  if (canNative(it)) {
+    stopVid(); try { aud.pause(); aud.removeAttribute("src"); aud.load(); } catch (e) {}
+    curNative = true; natTok++;
+    nat._src = url; nat._ready = false; nat._d = 0; nat._t = 0; nat._stamp = Date.now(); nat._rate = speed; nat._paused = !auto;
+    PL().load({ path: it.path, mid: it.mid || 0, kind: it.kind, start: 0, auto: !!auto, rate: speed, tok: natTok });
+    if (eq.on || enodes) eqApply();
+  } else {
+    if (wasNative) { stopVid(); nat.removeAttribute("src"); }
+    curNative = false;
+    vid.muted = false;
+    loadWeb(it, 0, !!auto);
+  }
   uiTrack();
 }
 function playEl(el) {
-  if (eq.on) eqApply();
+  if (eq.on || enodes) eqApply();
   const p = el.play(); if (p && p.catch) p.catch(e => { if (e && e.name === "NotAllowedError") return; if (e && e.name === "AbortError") return; trackError(); });
 }
 function trackError() {
@@ -826,11 +911,12 @@ function onEnded() {
 }
 function togglePlay() { const el = activeEl(); if (!curItem()) return; if (el.paused) playEl(el); else el.pause(); }
 function stopPlayback() {
-  try { aud.pause(); aud.removeAttribute("src"); aud.load(); vid.pause(); vid.removeAttribute("src"); vid.load(); } catch (e) {}
+  try { aud.pause(); aud.removeAttribute("src"); aud.load(); } catch (e) {}
+  stopVid(); if (curNative) nat.removeAttribute("src"); curNative = false;
   if (url) { URL.revokeObjectURL(url); url = null; }
   curId = null; if ($("full").classList.contains("open")) history.back(); uiTrack();
 }
-function setSpeed(v) { speed = v; store.set("speed", v); for (const e of [aud, vid]) { e.defaultPlaybackRate = v; e.playbackRate = v; } toast(v + "x"); syncMedia(); }
+function setSpeed(v) { speed = v; store.set("speed", v); for (const e of [aud, vid, nat]) { e.defaultPlaybackRate = v; e.playbackRate = v; } toast(v + "x"); syncMedia(); }
 function toggleShuffle() {
   shuf = !shuf; store.set("shuf", shuf);
   if (queue.length && curId != null) { if (shuf) { queue = shuffled(queue, curId); qi = 0; } else { queue = orig.filter(isVis); if (!queue.includes(curId)) queue.unshift(curId); qi = queue.indexOf(curId); } }
@@ -839,6 +925,7 @@ function toggleShuffle() {
 function cycleRepeat() { rep = rep === "off" ? "all" : rep === "all" ? "one" : "off"; store.set("rep", rep); uiShuf(); }
 function setMode(m) {
   const it = curItem(); if (!it || it.kind !== "v" || m === mode) return;
+  if (curNative) { mode = m; if (m === "video") startVid(); else stopVid(); uiTrack(); return; }
   const old = activeEl(), t = old.currentTime, was = !old.paused; old.pause(); old.removeAttribute("src"); try { old.load(); } catch (e) {}
   mode = m;
   const el = activeEl(); el.src = url; el.defaultPlaybackRate = speed; el.playbackRate = speed;
@@ -865,13 +952,23 @@ function eqBuild() {
     actx = new AC(); const bass = actx.createBiquadFilter(); bass.type = "lowshelf"; bass.frequency.value = 110;
     const fs = BANDS.map(f => { const b = actx.createBiquadFilter(); b.type = "peaking"; b.frequency.value = f; b.Q.value = 1; return b; });
     let prevN = bass; fs.forEach(f => { prevN.connect(f); prevN = f; }); prevN.connect(actx.destination);
-    for (const el of [aud, vid]) actx.createMediaElementSource(el).connect(bass);
-    enodes = { bass, fs }; return true;
+    const vg = actx.createGain(); actx.createMediaElementSource(vid).connect(vg); vg.connect(bass);   // vg is silenced while <video> is only a muted picture
+    actx.createMediaElementSource(aud).connect(bass);
+    enodes = { bass, fs, vg }; return true;
   } catch (e) { actx = null; enodes = null; return false; }
 }
+function natEq() {
+  const p = PL(); if (!p) return;
+  try {
+    p.eq({ on: !!eq.on, g: eq.g.slice(), bass: eq.bass || 0 }).then(r => {
+      if (eq.on && r && r.ok === false) { eq.on = false; store.set("eq", eq); toast(L("eq_fail")); if ($("sheetTitle").dataset.k === "eq") eqSheet(); }
+    }).catch(() => {});
+  } catch (e) {}
+}
 function eqApply() {
+  if (curNative) { if (enodes) enodes.vg.gain.value = 0; natEq(); store.set("eq", eq); return; }
   if (eq.on && !eqBuild()) { eq.on = false; toast(L("eq_fail")); }
-  if (enodes) { enodes.bass.gain.value = eq.on ? eq.bass : 0; enodes.fs.forEach((f, i) => { f.gain.value = eq.on ? eq.g[i] : 0; }); if (actx.state === "suspended") actx.resume().catch(() => {}); }
+  if (enodes) { enodes.vg.gain.value = 1; enodes.bass.gain.value = eq.on ? eq.bass : 0; enodes.fs.forEach((f, i) => { f.gain.value = eq.on ? eq.g[i] : 0; }); if (actx.state === "suspended") actx.resume().catch(() => {}); }
   store.set("eq", eq);
 }
 
@@ -942,7 +1039,7 @@ function reopenAudio() {
   el.addEventListener("loadedmetadata", function f() { el.removeEventListener("loadedmetadata", f); try { el.currentTime = t; } catch (e) {} playEl(el); });
 }
 document.addEventListener("visibilitychange", () => {
-  const it = curItem(); if (!document.hidden || !it || it.kind !== "v") return;
+  const it = curItem(); if (!document.hidden || !it || it.kind !== "v" || curNative) return;
   if (mode === "video" && !vid.paused) setMode("audio");
   else if (mode === "audio" && !aud.paused) reopenAudio();
 });
@@ -1306,7 +1403,7 @@ document.addEventListener("input", e => {
 
 function wire() {
   aud = $("aud");
-  for (const el of [aud, vid]) {
+  for (const el of [aud, vid, nat]) {
     el.addEventListener("timeupdate", () => { if (el === activeEl()) uiTime(); });
     el.addEventListener("play", () => { if (el === activeEl()) uiState(); });
     el.addEventListener("pause", () => { if (el === activeEl()) uiState(); });
