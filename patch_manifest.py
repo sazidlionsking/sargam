@@ -23,6 +23,12 @@ for line in perms:
         add += "\n    " + line
 s = re.sub(r"(<manifest[^>]*>)", lambda m: m.group(1) + add, s, count=1)
 
+# Capacitor's manifest already declares one androidx FileProvider (authority ${applicationId}.fileprovider).
+# A second one with the same class would break the build, so we reuse it and only replace its paths file.
+if "androidx.core.content.FileProvider" not in s:
+    prov = '\n        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>\n    '
+    s = s.replace("</application>", prov + "</application>", 1)
+
 if "SargamMediaService" not in s:
     svc = '\n        <service android:name=".SargamMediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" android:stopWithTask="true" />\n    '
     s = s.replace("</application>", svc + "</application>", 1)
@@ -33,6 +39,11 @@ jd = "android/app/src/main/java/com/sajid/sargam"
 os.makedirs(jd, exist_ok=True)
 for f in ["SargamMediaPlugin.java", "SargamMediaService.java"]:
     shutil.copy(f, jd)
+
+# share file paths
+xd = "android/app/src/main/res/xml"
+os.makedirs(xd, exist_ok=True)
+shutil.copy("sargam_paths.xml", os.path.join(xd, "file_paths.xml"))
 
 # notification icon
 rd = "android/app/src/main/res/drawable"

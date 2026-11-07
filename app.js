@@ -36,6 +36,8 @@ const IC = {
   person: P("M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"),
   album: P("M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"),
   playlist: P("M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"),
+  share: P("M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"),
+  download: P("M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"),
   trash: P("M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"),
   hide: P("M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"),
   speed: P("M20.38 8.57l-1.23 1.85a8 8 0 01-.22 7.58H5.07A8 8 0 0115.58 6.85l1.85-1.23A10 10 0 003.35 19a2 2 0 001.72 1h13.85a2 2 0 001.74-1 10 10 0 00-.27-10.44zm-9.79 6.84a2 2 0 002.83 0l5.66-8.49-8.49 5.66a2 2 0 000 2.83z"),
@@ -458,6 +460,28 @@ function deleteSheet(id) {
     a.appendChild(c); a.appendChild(o); b.appendChild(a);
   });
 }
+const MIMES = { mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", wav: "audio/wav", flac: "audio/flac", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg", wma: "audio/x-ms-wma", mka: "audio/x-matroska", mp4: "video/mp4", m4v: "video/mp4", mkv: "video/x-matroska", webm: "video/webm", "3gp": "video/3gpp", mov: "video/quicktime", avi: "video/x-msvideo" };
+const mimeOf = (name, kind) => MIMES[(String(name).split(".").pop() || "").toLowerCase()] || (kind === "v" ? "video/*" : "audio/*");
+async function exportItem(id, how) {
+  const it = items.get(id), N = NS(); if (!it || !N) return;
+  let path = it.path, name = it.name || (it.blob && it.blob.name) || it.title, mime = mimeOf(name, it.kind);
+  try {
+    if (!path && it.blob) {
+      busy(true, L("exporting"), 0);
+      await N.scan.clearCache().catch(() => {});
+      const CH = 768 * 1024, b = it.blob; let first = true, r = null;
+      for (let o = 0; o < b.size; o += CH) {
+        const part = await new Promise(res => { const f = new FileReader(); f.onload = () => res(String(f.result).split(",")[1] || ""); f.readAsDataURL(b.slice(o, o + CH)); });
+        r = await N.scan.writeCache({ name, data: part, append: !first }); first = false;
+        busy(true, null, Math.min(100, Math.round((o + CH) / b.size * 100)));
+      }
+      busy(false); path = r && r.path;
+    }
+    if (!path) throw new Error("no file");
+    if (how === "share") await N.scan.shareFile({ path, mime });
+    else { const r = await N.scan.saveCopy({ path, name, mime }); toast(L("saved_to", { p: (r && r.where) || "Download/Sargam" })); }
+  } catch (e) { busy(false); toast(L("exp_fail")); }
+}
 function openItemMenu(id, listEl) {
   const it = items.get(id); if (!it) return; const plId = listEl && listEl.dataset.pl ? +listEl.dataset.pl : null;
   openSheet(it.title, b => {
@@ -466,6 +490,7 @@ function openItemMenu(id, listEl) {
     srow(b, "speed", L("menu_speed"), () => speedSheet(), { val: speed + "x" });
     srow(b, "timer", L("menu_sleep"), () => sleepSheet());
     srow(b, "edit", L("edit_info"), () => infoSheet(id));
+    if (NS() && NS().scan.shareFile) { srow(b, "share", L("m_share"), () => { closeSheet(); exportItem(id, "share"); }); srow(b, "download", L("m_save"), () => { closeSheet(); exportItem(id, "save"); }); }
     srow(b, "hide", L("menu_hide"), () => { closeSheet(); hideItem(id); });
     if (plId) srow(b, "minus", L("menu_remove_pl"), () => { closeSheet(); removeFromPl(plId, id); });
     srow(b, "trash", L("menu_delete"), () => deleteSheet(id), { cls: "danger" });

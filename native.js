@@ -26,7 +26,11 @@ window.SargamNative = {
     askAll: () => Scan.askAllFiles(),
     toBin: o => Scan.toBin(o),
     fromBin: o => Scan.fromBin(o),
-    purge: o => Scan.purge(o)
+    purge: o => Scan.purge(o),
+    shareFile: o => Scan.shareFile(o),
+    saveCopy: o => Scan.saveCopy(o),
+    writeCache: o => Scan.writeCache(o),
+    clearCache: () => Scan.clearCache()
   } : null,
   media: native ? {
     update: o => quiet(Media.update(o)),

@@ -3,6 +3,7 @@ package com.sajid.sargam;
 import android.Manifest;
 import android.content.ContentResolver;
 import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -16,6 +17,7 @@ import android.provider.Settings;
 import androidx.activity.result.ActivityResult;
 import android.provider.MediaStore;
 import android.util.Base64;
+import androidx.core.content.FileProvider;
 import android.util.Size;
 
 import com.getcapacitor.JSArray;
@@ -548,5 +550,144 @@ public class SargamScanPlugin extends Plugin {
         File f = new File(call.getString("path", ""));
         if (f.getAbsolutePath().contains("/.SargamBin/")) f.delete();
         call.resolve();
+    }
+
+    // ---------------------------------------------------------------- share / save a copy
+
+    private File shareDir() {
+        File d = new File(getContext().getCacheDir(), "share");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    private static String safeName(String n) {
+        String s = n == null ? "" : n.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        return s.length() == 0 ? "song" : s;
+    }
+
+    /** Writes one base64 piece of a file into the app cache (used for songs that were added with the + button). */
+    @PluginMethod
+    public void writeCache(PluginCall call) {
+        try {
+            File f = new File(shareDir(), safeName(call.getString("name", "song")));
+            if (!call.getBoolean("append", false) && f.exists()) f.delete();
+            byte[] b = Base64.decode(call.getString("data", ""), Base64.DEFAULT);
+            FileOutputStream o = new FileOutputStream(f, true);
+            o.write(b);
+            o.close();
+            JSObject r = new JSObject();
+            r.put("path", f.getAbsolutePath());
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("write failed");
+        }
+    }
+
+    @PluginMethod
+    public void clearCache(PluginCall call) {
+        File[] fs = shareDir().listFiles();
+        if (fs != null) for (File f : fs) f.delete();
+        call.resolve();
+    }
+
+    /** Opens the Android share sheet for a file. */
+    @PluginMethod
+    public void shareFile(PluginCall call) {
+        try {
+            File f = new File(call.getString("path", ""));
+            if (!f.isFile()) {
+                call.reject("file not found");
+                return;
+            }
+            String mime = call.getString("mime", "*/*");
+            String auth = getContext().getPackageName() + ".fileprovider";
+            Uri uri;
+            try {
+                uri = FileProvider.getUriForFile(getContext(), auth, f);
+            } catch (IllegalArgumentException e) {
+                File c = new File(shareDir(), safeName(f.getName()));
+                if (!moveCopy(f, c)) {
+                    call.reject("could not prepare file");
+                    return;
+                }
+                uri = FileProvider.getUriForFile(getContext(), auth, c);
+            }
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent ch = Intent.createChooser(i, null);
+            ch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(ch);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("share failed");
+        }
+    }
+
+    private static boolean moveCopy(File from, File to) {
+        try {
+            InputStream in = new FileInputStream(from);
+            OutputStream out = new FileOutputStream(to);
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            in.close();
+            out.close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Copies a file into Downloads/Sargam so it can be found in any file manager. */
+    @PluginMethod
+    public void saveCopy(PluginCall call) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    File f = new File(call.getString("path", ""));
+                    String name = safeName(call.getString("name", f.getName()));
+                    String mime = call.getString("mime", "application/octet-stream");
+                    if (!f.isFile()) {
+                        call.reject("file not found");
+                        return;
+                    }
+                    String shown;
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        ContentValues v = new ContentValues();
+                        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                        v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                        v.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/Sargam");
+                        Uri u = getContext().getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                        if (u == null) {
+                            call.reject("could not create file");
+                            return;
+                        }
+                        OutputStream out = getContext().getContentResolver().openOutputStream(u);
+                        InputStream in = new FileInputStream(f);
+                        byte[] buf = new byte[65536];
+                        int n;
+                        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                        in.close();
+                        out.close();
+                    } else {
+                        File d = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Sargam");
+                        d.mkdirs();
+                        if (!moveCopy(f, new File(d, name))) {
+                            call.reject("copy failed");
+                            return;
+                        }
+                    }
+                    shown = "Download/Sargam/" + name;
+                    JSObject r = new JSObject();
+                    r.put("where", shown);
+                    call.resolve(r);
+                } catch (Throwable t) {
+                    call.reject("save failed");
+                }
+            }
+        }).start();
     }
 }
