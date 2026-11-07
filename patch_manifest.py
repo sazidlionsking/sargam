@@ -32,12 +32,15 @@ if "androidx.core.content.FileProvider" not in s:
 if "SargamMediaService" not in s:
     svc = '\n        <service android:name=".SargamMediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" android:stopWithTask="true" />\n    '
     s = s.replace("</application>", svc + "</application>", 1)
+if "SargamWidget" not in s:
+    rcv = '\n        <receiver android:name=".SargamWidget" android:exported="false"><intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter><meta-data android:name="android.appwidget.provider" android:resource="@xml/sargam_widget_info" /></receiver>\n    '
+    s = s.replace("</application>", rcv + "</application>", 1)
 open(man, "w", encoding="utf-8").write(s)
 
 # plugin sources
 jd = "android/app/src/main/java/com/sajid/sargam"
 os.makedirs(jd, exist_ok=True)
-for f in ["SargamMediaPlugin.java", "SargamMediaService.java", "SargamPlayer.java"]:
+for f in ["SargamMediaPlugin.java", "SargamMediaService.java", "SargamPlayer.java", "SargamWidget.java"]:
     shutil.copy(f, jd)
 
 # share file paths
@@ -49,6 +52,13 @@ shutil.copy("sargam_paths.xml", os.path.join(xd, "file_paths.xml"))
 rd = "android/app/src/main/res/drawable"
 os.makedirs(rd, exist_ok=True)
 shutil.copy("ic_stat_sargam.xml", rd)
+# home-screen widget resources (layout, widget info, drawables)
+ld = "android/app/src/main/res/layout"
+os.makedirs(ld, exist_ok=True)
+shutil.copy("sargam_widget.xml", ld)
+shutil.copy("sargam_widget_info.xml", xd)
+for f in ["w_bg.xml", "w_glass.xml", "w_play_bg.xml", "w_art_ph.xml", "w_note.xml", "ic_w_prev.xml", "ic_w_next.xml", "ic_w_play.xml", "ic_w_pause.xml"]:
+    shutil.copy(f, rd)
 print("manifest + media service patched")
 
 # fixed debug signing key: set it explicitly so every build is signed the same way and updates install over old ones

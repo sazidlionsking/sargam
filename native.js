@@ -37,6 +37,10 @@ window.SargamNative = {
     stop: () => quiet(Media.stop()),
     ask: () => Media.askNotif().catch(() => {}),
     battery: () => Media.battery().catch(() => {}),
+    widgetTiles: o => quiet(Media.widgetTiles(o)),
+    pending: () => Media.pending(),
+    toBack: () => quiet(Media.toBack()),
+    onWidget(cb) { quiet(Media.addListener("wplay", () => cb())); },
     onCmd(cb) { quiet(Media.addListener("cmd", e => cb(e || {}))); }
   } : null,
   player: native ? {

@@ -30,6 +30,7 @@ public class SargamMediaService extends Service {
     static boolean playing;
     static long pos, dur;
     static float speed = 1f;
+    static int color = 0xFF0F2418; // song colour for the home-screen widget (opaque ARGB)
 
     static final String CH = "sargam_playback";
     static final int ID = 7411;
@@ -169,6 +170,7 @@ public class SargamMediaService extends Service {
                 else if (wl.isHeld()) wl.release();
             }
         } catch (Exception e) { /* never crash the app because of the notification */ }
+        try { SargamWidget.refresh(this); } catch (Throwable e) { }
     }
 
     void shutdown() {
@@ -185,6 +187,7 @@ public class SargamMediaService extends Service {
         try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception e) {}
         try { SargamPlayer.release(); } catch (Throwable e) { }
         session = null; inst = null;
+        try { SargamWidget.refresh(getApplicationContext()); } catch (Throwable e) { }
         super.onDestroy();
     }
 }

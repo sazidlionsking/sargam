@@ -1,4 +1,8 @@
+@property --tr{syntax:"<number>";inherits:true;initial-value:34}
+@property --tg{syntax:"<number>";inherits:true;initial-value:224}
+@property --tb{syntax:"<number>";inherits:true;initial-value:122}
 :root{
+  --tr:34;--tg:224;--tb:122;transition:--tr .7s ease,--tg .7s ease,--tb .7s ease;
   --bg:#07090a;--g:#22e07a;--g2:#0fb868;--tx:#eef6f1;--mu:#8fa398;
   --glass:rgba(255,255,255,.06);--gb:rgba(255,255,255,.10);--press:rgba(34,224,122,.16);
   --sT:env(safe-area-inset-top,0px);--sB:env(safe-area-inset-bottom,0px);
@@ -33,7 +37,7 @@ input{font:inherit;color:inherit}
 
 /* mini player */
 #mini{position:fixed;left:10px;right:10px;bottom:calc(var(--sB) + 70px);z-index:19;display:none;align-items:center;gap:10px;padding:8px 10px;border-radius:20px;
-  background:rgba(255,255,255,.08);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);border:1px solid var(--gb);box-shadow:0 8px 30px rgba(0,0,0,.45)}
+  background:linear-gradient(135deg,rgba(var(--tr),var(--tg),var(--tb),.42),rgba(255,255,255,.07));-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);border:1px solid rgba(var(--tr),var(--tg),var(--tb),.38);box-shadow:0 8px 30px rgba(0,0,0,.45)}
 #mini.show{display:flex}
 #mini .meta{flex:1;min-width:0}
 #mini .mb{width:40px;height:40px;border-radius:50%;display:grid;place-items:center}
@@ -106,8 +110,8 @@ textarea.field{min-height:150px;resize:none;font-size:12.5px}
 #full{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;padding:calc(var(--sT) + 8px) 18px calc(var(--sB) + 14px);background:var(--bg);
   transform:translateY(102%);transition:transform .3s cubic-bezier(.2,.8,.2,1);overflow:hidden}
 #full.open{transform:none}
-#fbg{position:absolute;inset:-30px;background-size:cover;background-position:center;filter:blur(50px) saturate(1.3);opacity:.35;z-index:0;transition:background-image .3s}
-#full::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,9,10,.2),rgba(7,9,10,.92) 70%);z-index:0}
+#fbg{position:absolute;inset:-30px;background-size:cover;background-position:center;filter:blur(50px) saturate(1.3);opacity:.5;z-index:0;transition:background-image .3s}
+#full::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(var(--tr),var(--tg),var(--tb),.36),rgba(7,9,10,.55) 38%,rgba(7,9,10,.94) 80%);z-index:0}
 #full>*{position:relative;z-index:1}
 .fhead{display:flex;align-items:center;justify-content:space-between}
 .fh-t{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--mu)}
@@ -241,7 +245,7 @@ body:has(#mini.show):has(.page) .page{padding-bottom:calc(var(--sB) + 88px)}
 .stp-total{text-align:center;color:var(--mu);margin:8px 0 6px;font-size:14px}
 
 /* lyrics page: full screen, with song controls on top, tap anywhere to close */
-#lsheet{top:0;height:100%;border-radius:0;border-top:0;box-shadow:none;background:rgba(10,14,12,.97);padding-top:6px}
+#lsheet{top:0;height:100%;border-radius:0;border-top:0;box-shadow:none;background:linear-gradient(180deg,rgba(var(--tr),var(--tg),var(--tb),.40),rgba(10,14,12,.97) 58%),#0a0e0c;padding-top:6px}
 #lsheet .lmini{gap:10px;padding:4px 14px 6px}
 #lsheet .lmini .meta{flex:1;min-width:0}
 #lsheet .lmini .t,#lsheet .lmini .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

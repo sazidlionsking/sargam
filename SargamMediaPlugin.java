@@ -1,5 +1,6 @@
 package com.sajid.sargam;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.content.ContentUris;
 import android.content.Context;
@@ -30,8 +31,21 @@ import com.getcapacitor.annotation.PermissionCallback;
 )
 public class SargamMediaPlugin extends Plugin {
 
+    /** Widget tile that was tapped; JS fetches it with pending(). */
+    static volatile String pendingKey;
+    static volatile SargamMediaPlugin self;
+
+    static void deliver(String key) {
+        pendingKey = key;
+        SargamMediaPlugin s = self;
+        if (s != null) {
+            try { s.notifyListeners("wplay", new JSObject()); } catch (Throwable e) { }
+        }
+    }
+
     @Override
     public void load() {
+        self = this;
         SargamMediaService.cmd = new SargamMediaService.Cmd() {
             @Override public void on(String action, long posMs) {
                 JSObject o = new JSObject();
@@ -74,6 +88,39 @@ public class SargamMediaPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("load failed");
         }
+    }
+
+    /* ---------- home-screen widget ---------- */
+    @PluginMethod
+    public void pending(PluginCall call) {
+        JSObject o = new JSObject();
+        String k = pendingKey;
+        pendingKey = null;
+        if (k != null) o.put("k", k);
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void widgetTiles(PluginCall call) {
+        try {
+            JSArray a = call.getArray("tiles");
+            getContext().getSharedPreferences(SargamWidget.PREFS, 0).edit().putString("tiles", a == null ? "[]" : a.toString()).apply();
+            SargamWidget.refresh(getContext());
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("tiles failed");
+        }
+    }
+
+    @PluginMethod
+    public void toBack(PluginCall call) {
+        try {
+            final Activity act = getActivity();
+            if (act != null) {
+                act.runOnUiThread(new Runnable() { @Override public void run() { act.moveTaskToBack(true); } });
+            }
+        } catch (Exception e) { }
+        call.resolve();
     }
 
     @PluginMethod
@@ -123,6 +170,10 @@ public class SargamMediaPlugin extends Plugin {
             SargamMediaService.pos = call.getDouble("pos", 0.0).longValue();
             SargamMediaService.dur = call.getDouble("dur", 0.0).longValue();
             SargamMediaService.speed = call.getDouble("speed", 1.0).floatValue();
+            if (call.hasOption("color")) {
+                Integer col = call.getInt("color", SargamMediaService.color);
+                if (col != null) SargamMediaService.color = col;
+            }
             if (call.hasOption("art")) {
                 Bitmap bm = null;
                 String a = call.getString("art");
@@ -182,6 +233,7 @@ public class SargamMediaPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         SargamMediaService.cmd = null;
+        self = null;
         SargamPlayer.lis = null;
         SargamPlayer.stop();
         SargamMediaService.halt();

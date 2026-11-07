@@ -287,7 +287,7 @@ function openSettings() {
   openPage(() => ({
     title: L("settings"),
     html: srowH("lang", "globe", L("set_lang"), lang === "hi" ? "हिन्दी" : "English") + (NS() ? srowH("scan", "search", L("scan_now")) : "") + (NS() && !allGranted ? srowH("allfiles", "folder", L("set_allfiles"), "") : "") + (NS() ? srowH("bin", "trash", L("set_bin"), String([...items.values()].filter(i => i.bin).length)) : "") + srowH("eq", "eq", L("set_eq"), eq.on ? "ON" : "") +
-      srowH("hidden", "hide", L("set_hidden"), String([...items.values()].filter(i => i.hidden && !i.bin).length)) + srowH("backup", "backup", L("set_backup")) + srowH("about", "info", L("set_about"))
+      srowH("hidden", "hide", L("set_hidden"), String([...items.values()].filter(i => i.hidden && !i.bin).length)) + srowH("backup", "backup", L("set_backup")) + (NM() ? srowH("widget", "playlist", L("set_widget")) : "") + srowH("about", "info", L("set_about"))
   }));
 }
 function openHidden() {
@@ -1011,6 +1011,7 @@ function syncMedia() {
     const el = activeEl();
     const o = { title: it.title, artist: it.artist || "", album: it.album || "", playing: !el.paused, speed: speed,
       pos: Math.round((el.currentTime || 0) * 1000), dur: Math.round(((isFinite(el.duration) && el.duration > 0 ? el.duration : it.dur) || 0) * 1000) };
+    const tt = tintCache.get(tkey(it)); if (tt) o.color = widgetColor(tt);
     const key = it.id + (it.art ? "a" : it.thumb ? "t" : "n");
     if (key !== mediaKey) {
       mediaKey = key;
@@ -1043,6 +1044,138 @@ document.addEventListener("visibilitychange", () => {
   if (mode === "video" && !vid.paused) setMode("audio");
   else if (mode === "audio" && !aud.paused) reopenAudio();
 });
+
+
+/* ================= song colour: glass tint from the cover (player, mini player, lyrics, widget) ================= */
+const TINT_DEF = [34, 224, 122];
+const tintCache = new Map();
+const tkey = it => it.id + ":" + (it.art ? "a" : it.thumb ? "t" : "n");
+function rgb2hsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2; let h = 0, s = 0;
+  if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h /= 6; }
+  return [h, s, l];
+}
+function hsl2rgb(h, s, l) {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255));
+}
+function loadImg(src) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
+async function coverColor(src) {
+  const im = await loadImg(src); if (!im) return null;
+  try {
+    const c = document.createElement("canvas"); c.width = c.height = 32; const x = c.getContext("2d", { willReadFrequently: true });
+    x.drawImage(im, 0, 0, 32, 32); const d = x.getImageData(0, 0, 32, 32).data;
+    const B = []; for (let i = 0; i < 12; i++) B.push({ w: 0, r: 0, g: 0, b: 0 }); let tr = 0, tg = 0, tb = 0, tn = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 128) continue; const r = d[i], g = d[i + 1], b = d[i + 2]; tr += r; tg += g; tb += b; tn++;
+      const hs = rgb2hsl(r, g, b), w = hs[1] * (1 - Math.abs(hs[2] - .5) * 1.6);   // vivid, mid-light pixels count most
+      if (w <= .02) continue;
+      const bk = B[Math.min(11, Math.floor(hs[0] * 12))]; bk.w += w; bk.r += r * w; bk.g += g * w; bk.b += b * w;
+    }
+    let best = null; for (const bk of B) if (!best || bk.w > best.w) best = bk;
+    if (best && best.w > 1.2) return [best.r / best.w, best.g / best.w, best.b / best.w].map(Math.round);
+    if (tn) return [tr / tn, tg / tn, tb / tn].map(Math.round);   // grey picture: use its average
+  } catch (e) {}
+  return null;
+}
+function tintOf(rgb) {
+  const h = rgb2hsl(rgb[0], rgb[1], rgb[2]); let s = h[1], l = h[2];
+  if (s >= .12) s = Math.max(.35, Math.min(.85, s));
+  l = Math.max(.38, Math.min(.58, l)); return hsl2rgb(h[0], s, l);
+}
+function setTint(rgb) { const st = document.documentElement.style; st.setProperty("--tr", rgb[0]); st.setProperty("--tg", rgb[1]); st.setProperty("--tb", rgb[2]); }
+const widgetColor = rgb => ((255 << 24) | (Math.round(rgb[0] * .55) << 16) | (Math.round(rgb[1] * .55) << 8) | Math.round(rgb[2] * .55)) | 0;
+async function applyTint(it) {
+  if (!it) { setTint(TINT_DEF); return; }
+  const k = tkey(it); if (tintCache.has(k)) { setTint(tintCache.get(k)); syncMedia(); return; }
+  const src = it.art && artUrl ? artUrl : it.thumb; const my = it.id;
+  const c = src ? await coverColor(src) : null; if (curId !== my) return;
+  const t = c ? tintOf(c) : TINT_DEF; tintCache.set(k, t); setTint(t); syncMedia();
+}
+
+/* ================= home-screen widget tiles (playlists or songs, up to 5) ================= */
+const W_MAX = 5; let libReady = false, wTimer = 0;
+const wOk = k => { const a = String(k).split(":"), id = +a[1]; return a[0] === "pl" ? pls.some(p => p.id === id) : a[0] === "song" ? items.has(id) : false; };
+function wKeys() {
+  const t = store.get("wtiles", null);
+  if (Array.isArray(t)) return t.filter(wOk).slice(0, W_MAX);
+  const k = pls.slice(0, W_MAX).map(p => "pl:" + p.id);
+  if (k.length < W_MAX) [...items.values()].filter(i => showable(i) && !i.bin).sort((a, b) => (b.added || 0) - (a.added || 0)).slice(0, W_MAX - k.length).forEach(i => k.push("song:" + i.id));
+  return k;
+}
+function wInfo(k) {
+  const a = String(k).split(":"), id = +a[1];
+  if (a[0] === "pl") { const p = pls.find(x => x.id === id); return p ? { n: p.name, it: p.ids.map(i => items.get(i)).find(i => i && (i.art || i.thumb)) } : null; }
+  const it = items.get(id); return it ? { n: it.title, it } : null;
+}
+async function tinyThumb(it) {
+  try {
+    if (!it) return ""; let src = it.thumb, tmp = null;
+    if (!src && it.art) { tmp = URL.createObjectURL(it.art); src = tmp; }
+    if (!src) return "";
+    const im = await loadImg(src); if (tmp) URL.revokeObjectURL(tmp); if (!im) return "";
+    const c = document.createElement("canvas"); c.width = c.height = 96; const x = c.getContext("2d"), s = Math.min(im.width, im.height);
+    x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 96, 96);
+    return c.toDataURL("image/jpeg", .75).split(",")[1] || "";
+  } catch (e) { return ""; }
+}
+function pushWidget() {
+  const m = NM(); if (!m || !m.widgetTiles) return;
+  clearTimeout(wTimer);
+  wTimer = setTimeout(async () => {
+    const out = [];
+    for (const k of wKeys()) { const f = wInfo(k); if (f) out.push({ k, n: f.n, t: await tinyThumb(f.it) }); }
+    m.widgetTiles({ tiles: out });
+  }, 700);
+}
+function wSave(ks) { store.set("wtiles", ks); refreshAll(); pushWidget(); }
+// a tile on the home screen was tapped: play it, then send the app back to the background
+async function widgetPlay() {
+  const m = NM(); if (!m || !m.pending) return;
+  let r = null; try { r = await m.pending(); } catch (e) {}
+  const k = r && r.k; if (!k) return;
+  for (let i = 0; i < 50 && !libReady; i++) await new Promise(f => setTimeout(f, 200));
+  const a = String(k).split(":"), id = +a[1]; let ids = [];
+  if (a[0] === "pl") { const p = pls.find(x => x.id === id); ids = p ? p.ids.filter(isVis) : []; }
+  else if (a[0] === "song") ids = isVis(id) ? [id] : [];
+  if (!ids.length) { toast(L("w_none")); return; }
+  playQueue(ids, 0);
+  setTimeout(() => { try { m.toBack(); } catch (e) {} }, 1200);
+}
+if (NM() && NM().onWidget) NM().onWidget(() => widgetPlay());
+function openWidgetPage() {
+  openPage(() => {
+    const ks = wKeys();
+    let h = '<div class="note" style="padding:4px 14px 10px">' + esc(L("w_hint")) + "</div>";
+    h += ks.map((k, i) => {
+      const f = wInfo(k), pl = String(k).startsWith("pl:");
+      return '<div class="srow" style="cursor:default"><span class="si">' + ic(pl ? "playlist" : "note") + '</span><span class="sl">' + esc(f ? f.n : k) + '<small style="display:block;color:var(--mu);font-size:12px">' + esc(L(pl ? "w_pl" : "w_song")) + "</small></span>" +
+        '<button class="ib tap" data-act="wmv" data-v="' + i + '" data-d="-1">&#8593;</button><button class="ib tap" data-act="wmv" data-v="' + i + '" data-d="1">&#8595;</button><button class="ib tap" data-act="wdel" data-v="' + i + '">&#10005;</button></div>';
+    }).join("");
+    if (ks.length < W_MAX) h += srowH("wadd", "add", L("w_add"));
+    h += srowH("wauto", "back", L("w_auto"));
+    return { title: L("set_widget"), html: h };
+  });
+}
+function openWidgetPicker() {
+  openSheet(L("w_add"), b => {
+    const have = new Set(wKeys());
+    const add = k => { const ks = wKeys(); if (ks.length >= W_MAX) { toast(L("w_full")); return; } if (!ks.includes(k)) ks.push(k); wSave(ks); closeSheet(); };
+    if (pls.length) { b.appendChild(mk("div", "sec", esc(L("tab_playlists")))); pls.forEach(p => { if (!have.has("pl:" + p.id)) srow(b, "playlist", p.name, () => add("pl:" + p.id), { val: String(p.ids.length) }); }); }
+    b.appendChild(mk("div", "sec", esc(L("w_song"))));
+    const q = mk("input", "field"); q.placeholder = L("w_search"); q.style.marginBottom = "6px"; b.appendChild(q);
+    const box = mk("div", ""); b.appendChild(box);
+    const all = [...items.values()].filter(i => showable(i) && !i.bin).sort(byTitle);
+    const draw = () => {
+      const s = q.value.trim().toLowerCase(); box.innerHTML = "";
+      all.filter(i => !s || (i.title + " " + (i.artist || "")).toLowerCase().includes(s)).slice(0, 40).forEach(i => { if (!have.has("song:" + i.id)) srow(box, i.kind === "v" ? "video" : "note", i.title, () => add("song:" + i.id), { val: i.artist || "" }); });
+    };
+    q.oninput = draw; draw();
+  });
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) pushWidget(); });
 
 /* ================= first-run welcome (asks every permission once) ================= */
 function showWelcome() {
@@ -1113,11 +1246,11 @@ function uiTrack() {
   const big = artUrl || it.thumb;
   $("fCover").innerHTML = big ? '<img alt="" src="' + big + '">' : ic(it.kind === "v" ? "video" : "note");
   $("fbg").style.backgroundImage = it.thumb ? "url(" + it.thumb + ")" : "none";
-  if (!it.blob && it.art === undefined) scanArt(it).then(() => { if (curId === it.id && it.art) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = URL.createObjectURL(it.art); $("fCover").innerHTML = '<img alt="" src="' + artUrl + '">'; $("fbg").style.backgroundImage = 'url("' + artUrl + '")'; syncMedia(); } });
+  if (!it.blob && it.art === undefined) scanArt(it).then(() => { if (curId === it.id && it.art) { if (artUrl) URL.revokeObjectURL(artUrl); artUrl = URL.createObjectURL(it.art); $("fCover").innerHTML = '<img alt="" src="' + artUrl + '">'; $("fbg").style.backgroundImage = 'url("' + artUrl + '")'; applyTint(it); syncMedia(); } });
   $("fArt").classList.toggle("m-video", it.kind === "v" && mode === "video");
   const vb = $("fVid"); vb.classList.toggle("hide", it.kind !== "v"); vb.classList.toggle("on", mode === "video"); vb.innerHTML = ic(mode === "video" ? "headset" : "video");
   $("tDur").textContent = fmt(it.dur); uiHeart(); uiState(); uiShuf(); uiSleep(); uiTime(true);
-  loadLyrics();
+  applyTint(it); loadLyrics();
 }
 function uiHeart() { const it = curItem(); const b = $("fHeart"); if (!b) return; b.innerHTML = ic(it && it.fav ? "heart" : "heartO"); b.classList.toggle("on", !!(it && it.fav)); }
 function uiState() {
@@ -1219,7 +1352,7 @@ async function nativeScan(manual) {
     const n = await mergeScan((r && r.items) || []);
     lastScan = Date.now(); if (manual) busy(false);
     if (n.added || manual) toast(L("scan_done", { n: n.added }));
-    refreshAll();
+    refreshAll(); pushWidget();
   } catch (e) { busy(false); if (manual) toast(L("scan_fail")); }
   scanning = false;
 }
@@ -1367,6 +1500,11 @@ function onAct(el) {
     case "lang": openSheet(L("lang_pick"), b => [["en", "English"], ["hi", "हिन्दी"]].forEach(([k, n]) => srow(b, "globe", n, () => { lang = k; store.set("lang", k); closeSheet(); setStatic(); refreshAll(); }, { check: lang === k }))); break;
     case "eq": openEQ(); break;
     case "hidden": openHidden(); break;
+    case "widget": openWidgetPage(); break;
+    case "wadd": openWidgetPicker(); break;
+    case "wdel": { const ks = wKeys(); ks.splice(+el.dataset.v, 1); wSave(ks); break; }
+    case "wmv": { const ks = wKeys(), i = +el.dataset.v, j = i + (+el.dataset.d); if (j >= 0 && j < ks.length) { const t = ks[i]; ks[i] = ks[j]; ks[j] = t; wSave(ks); } break; }
+    case "wauto": store.set("wtiles", null); refreshAll(); pushWidget(); break;
     case "backup": openBackup(); break;
     case "about": openSheet(L("set_about"), b => { b.appendChild(mk("div", "msg", esc(L("about_text")) + '<br><br><b style="color:var(--g);font-size:17px">' + esc(L("created_by")) + "</b><br>" + esc(L("version")))); }); break;
     case "allfiles": (async () => { try { const N = NS(); if (N && N.scan.askAll) await N.scan.askAll(); } catch (e) {} await checkAll(); refreshAll(); if (allGranted) nativeScan(false); })(); break;
@@ -1460,5 +1598,6 @@ function wire() {
   setStatic(); renderTab(); setupSwipes(); setTimeout(upgradeAll, 1500); if (NS() && !store.get("welcomed", false)) showWelcome(); else startScan();
   try { let t; new MutationObserver(() => { clearTimeout(t); t = setTimeout(observeThumbs, 80); }).observe(document.body, { childList: true, subtree: true }); } catch (e) {}
   if (eq.on) { /* graph is built on first play */ }
+  libReady = true; pushWidget(); widgetPlay();
 })();
 })();
